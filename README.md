@@ -51,9 +51,9 @@ Actions > **manage** > Run workflow:
 - **label**: optional. It names the product on the status page and in its notifications.
   Left empty, the product's own page title is used.
 
-The workflow commits `products.json`, which restarts the poll loop, so the new product
-is checked and shown on the status page about a minute later. Editing `products.json`
-and pushing it by hand does the same thing.
+The workflow commits `products.json` and then starts the `poll` workflow, so the new
+product is checked and shown on the status page about a minute later. Editing
+`products.json` and pushing it by hand does the same thing.
 
 ## Notifications
 

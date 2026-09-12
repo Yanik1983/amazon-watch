@@ -13,8 +13,8 @@ on:
       - "watch/**"
       - "requirements.txt"
       - ".github/workflows/poll.yml"
-      # A manage run commits this, which cancels the sleeping loop and starts a
-      # fresh one, so an added product is polled immediately.
+      # Only helps when a human edits the list and pushes: the manage workflow's
+      # own commit raises no push event, so it dispatches this workflow instead.
       - "products.json"
 
 permissions:

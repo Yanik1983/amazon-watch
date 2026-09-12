@@ -267,10 +267,14 @@ and commits nothing.
 out, installs Python, runs `watch.manage`, and commits and pushes
 `products.json` when it changed.
 
-It does not poll. `poll.yml` gains `products.json` to its `push` path filter, so
-the manage commit cancels the sleeping poll job and starts a fresh one, which
-polls immediately. Adding a product therefore shows its state on the page about
-a minute later, with no second button to press.
+It does not poll itself. After pushing, it dispatches `poll.yml`, which cancels
+the sleeping poll job and starts a fresh one that polls immediately, so adding a
+product shows its state on the page about a minute later with no second button to
+press. The dispatch has to be explicit: GitHub raises no push event for a commit
+made with `GITHUB_TOKEN`, so a path filter alone would never fire. `workflow_dispatch`
+is the one event that token may raise, and raising it needs `actions: write`.
+`poll.yml` still gains `products.json` to its `push` paths, which covers a human
+editing the list by hand and pushing it.
 
 `poll.yml` stages only the files it writes. It never writes `products.json`, so
 that file is not added to its commit step; when a poll and a manage run race, the
