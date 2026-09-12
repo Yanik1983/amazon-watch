@@ -35,6 +35,8 @@ h1 a { color: inherit; }
 .card h2 { font-size: 1.05rem; margin: 0 0 .4rem; }
 .card h2 a { color: inherit; }
 .card .badge { font-size: 1.1rem; }
+.asin { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: .85rem; color: #666; margin: -.2rem 0 .4rem; user-select: all; }
 .empty { color: #555; font-style: italic; margin: 1.5rem 0; }
 table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #ddd; }
@@ -250,6 +252,9 @@ def _card(entry: dict, ps: dict, rows: list[dict]) -> str:
     out = [
         '<div class="card">',
         f'<h2><a href="{escape(config.product_url(asin))}">{label}</a></h2>',
+        # The ASIN is what identifies a product to the form, and colour variants of
+        # one item share a label but not an ASIN, so the card has to show it.
+        f'<p class="asin">{escape(asin)}</p>',
         f'<div class="badge {cls}">{badge}</div>',
     ]
     delivery = escape(ps.get("delivery_text") or "")
