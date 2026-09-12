@@ -147,10 +147,15 @@ def run(
     state_mod.save(state_path, st)
     if history_changed:
         history_mod.save(history_path, history)
+    _write_page(page_path, st, history, entries, now)
+    return st
+
+
+def _write_page(page_path: str | Path, st: dict, history: list[dict],
+                entries: list[dict], now: datetime) -> None:
     page = Path(page_path)
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(render_page(st, history, entries, now), encoding="utf-8")
-    return st
 
 
 def poll_due(st: dict, now: datetime) -> bool:
@@ -208,7 +213,18 @@ def tick(
         state_mod.save(state_path, st)
     if changed or poll_due(st, now):
         return run(products_path=products_path, state_path=state_path, now=now, **run_kwargs)
-    log.info("nothing due; next Amazon poll after %s", st.get("last_checked"))
+
+    # No Amazon poll this tick, but still re-render: the page is a pure function of
+    # the stored data, so this is free when nothing changed and picks up a new page
+    # layout within a minute of it being deployed.
+    log.info("no poll due; next one after %s", st.get("last_checked"))
+    _write_page(
+        run_kwargs.get("page_path", config.PAGE_PATH),
+        st,
+        history_mod.load(run_kwargs.get("history_path", config.HISTORY_PATH)),
+        products_mod.load(products_path),
+        now,
+    )
     return st
 
 
