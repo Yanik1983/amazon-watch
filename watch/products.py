@@ -1,7 +1,8 @@
 """The list of watched products, and the labels and tags derived from it.
 
-products.json is the source of truth for what the watcher polls. Only
-watch/manage.py writes it; the poll reads it and never changes it, so a label a
+products.json is the source of truth for what the watcher polls. It is written
+only in response to an explicit request to change the list, by watch/manage.py or
+by a verified command from the status page; a poll never writes it, so a label a
 user typed is never overwritten by a page title.
 """
 from __future__ import annotations

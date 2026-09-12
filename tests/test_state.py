@@ -6,7 +6,7 @@ from watch import config, state
 
 def test_load_missing_returns_default(tmp_path):
     s = state.load(tmp_path / "nope.json")
-    assert s == {"version": 2, "last_checked": None, "products": {}}
+    assert s == {"version": 2, "last_checked": None, "products": {}, "command_nonces": []}
 
 
 def test_load_corrupt_returns_default(tmp_path):
@@ -86,6 +86,20 @@ def test_entry_returns_the_existing_dict():
     st = state.default_state()
     state.entry(st, "B07W1P15GL")["title"] = "Ladle"
     assert state.entry(st, "B07W1P15GL")["title"] == "Ladle"
+
+
+def test_command_nonces_round_trip(tmp_path):
+    p = tmp_path / "state.json"
+    s = state.default_state()
+    s["command_nonces"] = ["abc", "def"]
+    state.save(p, s)
+    assert state.load(p)["command_nonces"] == ["abc", "def"]
+
+
+def test_a_state_file_without_nonces_loads_an_empty_list(tmp_path):
+    p = tmp_path / "state.json"
+    p.write_text(json.dumps({"version": 2, "products": {}}), encoding="utf-8")
+    assert state.load(p)["command_nonces"] == []
 
 
 def test_prune_drops_unwatched_products():

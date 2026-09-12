@@ -20,7 +20,7 @@ it belongs to so the notifications can be told apart and filtered.
 | Product list | `products.json` in the repository root, committed like the other data files. |
 | Add and remove | A `manage` workflow with `workflow_dispatch` inputs. The status page links to it, the same way the "Check now" button links to `poll`. |
 | Product identity | The ASIN. It is the key in state, in history, and in `products.json`. |
-| Labels | Optional and user-supplied at add time. When absent, the product's page title from the last successful poll is used, and the ASIN when there is no title yet. `products.json` is never written by the poll. |
+| Labels | Optional and user-supplied at add time. When absent, the product's page title from the last successful poll is used, and the ASIN when there is no title yet. `products.json` is never written by a poll, only by an explicit add or remove. |
 | Notification routing | One topic, as today. Each push carries a per-product ntfy tag. Per-product topics were considered and rejected: every topic needs subscribing by hand, which defeats the two-tap add flow. |
 | Requests per cycle | The ship-to Israel context is set once per cycle and the session is reused, so a cycle costs 2 requests plus 1 per product. |
 | Failure alerts | Per product, with one combined alert when every product is failing at once (a captcha or network problem, not a product problem). |

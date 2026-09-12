@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-from watch import config, history as history_mod, products
+from watch import commands, config, history as history_mod, products
 
 try:  # zoneinfo needs tzdata on some platforms; the page still renders without it
     from zoneinfo import ZoneInfo
@@ -38,6 +38,168 @@ h1 a { color: inherit; }
 .empty { color: #555; font-style: italic; margin: 1.5rem 0; }
 table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #ddd; }
+form.manage { background: #fff; border: 1px solid #e2e2e2; border-radius: .6rem;
+              padding: .9rem 1rem; margin: 1.5rem 0 .5rem; }
+form.manage h2 { font-size: 1.05rem; margin: 0 0 .6rem; }
+form.manage label { display: block; font-size: .9rem; color: #555; margin: .6rem 0 .2rem; }
+form.manage input, form.manage select { width: 100%; box-sizing: border-box;
+              padding: .6rem .5rem; font-size: 1rem; border: 1px solid #ccc;
+              border-radius: .4rem; background: #fff; color: #222; }
+form.manage button { width: 100%; margin-top: .9rem; padding: .85rem 1rem;
+              border: 0; border-radius: .5rem; background: #1f6feb; color: #fff;
+              font-weight: 700; font-size: 1.05rem; }
+form.manage button:disabled { background: #9ab; }
+#cmd-status { margin: .7rem 0 0; font-size: .95rem; min-height: 1.2rem; }
+#cmd-status.ok { color: #0b5a1e; }
+#cmd-status.bad { color: #7a2e00; }
+details { margin: 1rem 0; }
+summary { cursor: pointer; }
+"""
+
+# The form talks only to ntfy. It holds no credential: the passphrase the user
+# types stays in this browser and is used to derive the mailbox address and sign
+# each note, so the page can be public without letting a stranger change anything.
+FORM = """
+<form class="manage" id="cmd-form" autocomplete="off">
+<h2>Add or remove a product</h2>
+<div id="phrase-row" hidden>
+  <label for="cmd-phrase">Passphrase</label>
+  <input type="password" id="cmd-phrase" autocomplete="current-password"
+         placeholder="typed once, then remembered on this device">
+</div>
+<label for="cmd-action">What to do</label>
+<select id="cmd-action">
+  <option value="add">Add a product</option>
+  <option value="remove">Remove a product</option>
+</select>
+<label for="cmd-product">ASIN or Amazon link</label>
+<input type="text" id="cmd-product" inputmode="url"
+       placeholder="B07W1P15GL or https://www.amazon.com/dp/...">
+<label for="cmd-label">Name to show (optional)</label>
+<input type="text" id="cmd-label" placeholder="left empty, the page title is used">
+<button type="submit" id="cmd-send">Send</button>
+<p id="cmd-status" class="meta"></p>
+<p class="meta" id="phrase-note"></p>
+</form>
+"""
+
+SCRIPT = """
+<script>
+(function () {
+  var NTFY = "__NTFY__", VERSION = __VERSION__, KEY = "amazon-watch-passphrase";
+  var form = document.getElementById("cmd-form");
+  var statusEl = document.getElementById("cmd-status");
+  var phraseRow = document.getElementById("phrase-row");
+  var phraseInput = document.getElementById("cmd-phrase");
+  var phraseNote = document.getElementById("phrase-note");
+  var sendBtn = document.getElementById("cmd-send");
+
+  function stored() { try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; } }
+  function store(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
+  function forget() { try { localStorage.removeItem(KEY); } catch (e) {} }
+
+  function say(text, cls) { statusEl.textContent = text; statusEl.className = cls || "meta"; }
+
+  function showPhraseState() {
+    var have = stored();
+    phraseRow.hidden = !!have;
+    phraseNote.innerHTML = have
+      ? 'Passphrase remembered on this device. <a href="#" id="forget">Forget it</a>.'
+      : "The passphrase never leaves this device. It signs the request so only you can change the list.";
+    var f = document.getElementById("forget");
+    if (f) f.onclick = function (e) { e.preventDefault(); forget(); showPhraseState(); say(""); };
+  }
+
+  function hex(buf) {
+    return Array.prototype.map.call(new Uint8Array(buf),
+      function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+  }
+
+  async function hmac(phrase, message) {
+    var enc = new TextEncoder();
+    var key = await crypto.subtle.importKey("raw", enc.encode(phrase),
+      { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    return hex(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
+  }
+
+  function nonce() {
+    var a = new Uint8Array(8);
+    crypto.getRandomValues(a);
+    return hex(a.buffer);
+  }
+
+  // Wait for the watcher's reply on the same topic. It arrives within about a
+  // minute, which is how often the poll job looks in the mailbox.
+  async function awaitReply(topic, id, deadline) {
+    while (Date.now() < deadline) {
+      await new Promise(function (r) { setTimeout(r, 3000); });
+      var left = Math.round((deadline - Date.now()) / 1000);
+      say("Sent. Waiting for the watcher to pick it up (" + left + "s)…");
+      var resp;
+      try {
+        resp = await fetch(NTFY + "/" + topic + "/json?poll=1&since=300s");
+      } catch (e) { continue; }
+      if (!resp.ok) continue;
+      var lines = (await resp.text()).split("\\n");
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        var note, body;
+        try { note = JSON.parse(lines[i]); body = JSON.parse(note.message); } catch (e) { continue; }
+        if (body && body.reply === id) return body;
+      }
+    }
+    return null;
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    if (!window.crypto || !crypto.subtle) {
+      return say("This browser cannot sign the request. Use the manage workflow below.", "bad");
+    }
+    var phrase = stored() || phraseInput.value.trim();
+    if (!phrase) return say("Enter the passphrase first.", "bad");
+    var product = document.getElementById("cmd-product").value.trim();
+    if (!product) return say("Enter an ASIN or an Amazon link.", "bad");
+
+    var cmd = {
+      action: document.getElementById("cmd-action").value,
+      product: product,
+      label: document.getElementById("cmd-label").value.trim(),
+      ts: Math.floor(Date.now() / 1000),
+      nonce: nonce(),
+      v: VERSION
+    };
+    var topic = "amzcmd-" + (await hmac(phrase, "topic")).slice(0, 24);
+    var canonical = [cmd.action, cmd.product, cmd.label, cmd.ts, cmd.nonce].join("\\n");
+    var payload = JSON.stringify({ cmd: cmd, sig: await hmac(phrase, canonical) });
+
+    sendBtn.disabled = true;
+    say("Sending\\u2026");
+    try {
+      var resp = await fetch(NTFY + "/" + topic, { method: "POST", body: payload });
+      if (!resp.ok) throw new Error("ntfy returned " + resp.status);
+    } catch (err) {
+      sendBtn.disabled = false;
+      return say("Could not reach the mailbox: " + err.message, "bad");
+    }
+    if (!stored()) { store(phrase); phraseInput.value = ""; showPhraseState(); }
+
+    var reply = await awaitReply(topic, cmd.nonce, Date.now() + 90000);
+    sendBtn.disabled = false;
+    if (!reply) {
+      return say("No answer yet. The watcher may be between jobs; it will pick this up "
+                 + "within ten minutes. Reload later to check.", "bad");
+    }
+    if (!reply.ok) return say(reply.message, "bad");
+    say(reply.message + " \\u2014 the page updates in a minute or two.", "ok");
+    document.getElementById("cmd-product").value = "";
+    document.getElementById("cmd-label").value = "";
+    setTimeout(function () { location.reload(); }, 90000);
+  });
+
+  showPhraseState();
+})();
+</script>
 """
 
 
@@ -156,10 +318,17 @@ def render_page(state: dict, history: list[dict], product_list: list[dict],
         '<p class="meta">Opens GitHub Actions. Tap "Run workflow" there, then reload this page '
         'in about a minute. A manual run also restarts the hourly cycle.</p>'
     )
+    parts.append(FORM)
     parts.append(
-        f'<a class="check" href="{escape(config.MANAGE_WORKFLOW_URL)}">Manage products</a>'
-        '<p class="meta">Opens GitHub Actions. Tap "Run workflow", choose add or remove, and '
-        'paste an ASIN or an Amazon link. The next check starts by itself.</p>'
+        SCRIPT.replace("__NTFY__", config.NTFY_SERVER)
+              .replace("__VERSION__", str(commands.COMMAND_VERSION))
+    )
+    parts.append(
+        f'<details><summary class="meta">Lost the passphrase?</summary>'
+        f'<p class="meta">Add and remove products on GitHub instead: '
+        f'<a href="{escape(config.MANAGE_WORKFLOW_URL)}">the manage workflow</a>. '
+        'Tap "Run workflow", choose add or remove, and paste an ASIN or an Amazon link.'
+        '</p></details>'
     )
     parts.append(
         f'<p class="meta">Times are {escape(config.DISPLAY_TZ.split("/")[-1])} local unless '

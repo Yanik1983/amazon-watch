@@ -12,8 +12,9 @@ VERSION = 2
 def default_state() -> dict:
     return {
         "version": VERSION,
-        "last_checked": None,   # ISO datetime (UTC) of the last poll cycle
-        "products": {},         # ASIN -> entry
+        "last_checked": None,       # ISO datetime (UTC) of the last poll cycle
+        "products": {},             # ASIN -> entry
+        "command_nonces": [],   # nonces of applied page commands, newest last
     }
 
 
@@ -61,6 +62,9 @@ def load(path: str | Path) -> dict:
         return _migrate_v1(data)
     st = default_state()
     st["last_checked"] = data.get("last_checked")
+    nonces = data.get("command_nonces")
+    if isinstance(nonces, list):
+        st["command_nonces"] = [str(n) for n in nonces]
     for asin, raw in (data.get("products") or {}).items():
         e = default_entry()
         if isinstance(raw, dict):

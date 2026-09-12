@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from watch import config, history as history_mod, notify
+from watch import commands, config, history as history_mod, notify
 from watch import products as products_mod, state as state_mod
 from watch.client import FetchError, fetch_page, new_session, set_israel
 from watch.parser import ParseError, Product, parse
@@ -153,6 +153,56 @@ def run(
     return st
 
 
+def poll_due(st: dict, now: datetime) -> bool:
+    """Whether enough time has passed since the last Amazon poll.
+
+    Read from the state file rather than counted in the job, so the hourly cadence
+    survives a job being cancelled and restarted, which happens on every push.
+    """
+    last = st.get("last_checked")
+    if not last:
+        return True
+    try:
+        when = datetime.fromisoformat(last)
+    except (ValueError, TypeError):
+        return True
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (now - when).total_seconds() >= config.POLL_INTERVAL_SECONDS
+
+
+def tick(
+    passphrase: str | None = None,
+    products_path: str | Path = config.PRODUCTS_PATH,
+    state_path: str | Path = config.STATE_PATH,
+    now: datetime | None = None,
+    get=None,
+    post=None,
+    **run_kwargs,
+) -> dict:
+    """One minute of the watcher's life: read the mailbox, and poll if it is time.
+
+    Splitting the mailbox check from the Amazon poll is the whole point: commands
+    from the status page are picked up within a minute while Amazon keeps being
+    asked once an hour.
+    """
+    now = now or datetime.now(timezone.utc)
+    st = state_mod.load(state_path)
+    kw = {k: v for k, v in {"get": get, "post": post}.items() if v is not None}
+    changed = commands.apply_commands(
+        config.CMD_PASSPHRASE if passphrase is None else passphrase,
+        products_path, st, now, **kw,
+    )
+    if changed:
+        # Persist the applied nonces before polling, so a poll that dies partway
+        # cannot cause the same command to be applied a second time.
+        state_mod.save(state_path, st)
+    if changed or poll_due(st, now):
+        return run(products_path=products_path, state_path=state_path, now=now, **run_kwargs)
+    log.info("nothing due; next Amazon poll after %s", st.get("last_checked"))
+    return st
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -163,6 +213,17 @@ def main() -> int:
         log.info("done: %d watched, free: %s", len(st["products"]), free or "none")
     except Exception:  # never fail the workflow; page and state may still be committed
         log.exception("unexpected error in poll")
+    return 0
+
+
+def tick_main() -> int:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    try:
+        tick()
+    except Exception:  # a bad tick must not end the loop; the next one tries again
+        log.exception("unexpected error in tick")
     return 0
 
 
