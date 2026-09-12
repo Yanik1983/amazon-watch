@@ -1,0 +1,66 @@
+name: manage
+
+# Add or remove a watched product from a phone: Run workflow, pick add or remove,
+# paste an ASIN or an Amazon link. The commit this makes matches poll.yml's push
+# filter, which cancels the sleeping poll job and starts a fresh one, so the new
+# product shows up on the status page about a minute later.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Add or remove"
+        type: choice
+        options: [add, remove]
+        required: true
+        default: add
+      product:
+        description: "ASIN or Amazon product URL"
+        required: true
+      label:
+        description: "Name to show on the page and in notifications (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manage
+
+jobs:
+  manage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Apply the change
+        env:
+          ACTION: ${{ inputs.action }}
+          PRODUCT: ${{ inputs.product }}
+          LABEL: ${{ inputs.label }}
+        run: python -m watch.manage --action "$ACTION" --product "$PRODUCT" --label "$LABEL"
+
+      - name: Commit and push
+        env:
+          ACTION: ${{ inputs.action }}
+          PRODUCT: ${{ inputs.product }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add products.json
+          if git diff --cached --quiet; then
+            echo "products.json unchanged"
+          else
+            git commit -q -m "chore: $ACTION product $PRODUCT"
+            # The poll pushes to main every hour, so a collision is possible.
+            # Rebase onto whatever landed and try once more before failing.
+            git push -q origin HEAD:main || {
+              git pull -q --rebase origin main
+              git push -q origin HEAD:main
+            }
+          fi
