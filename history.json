@@ -2,6 +2,13 @@
   {
     "at": "2026-09-12T16:01:36.245875+00:00",
     "free": false,
-    "delivery_text": "ILS 58.91"
+    "delivery_text": "ILS 58.91",
+    "asin": "B07W1P15GL"
+  },
+  {
+    "at": "2026-09-12T20:15:44.375738+00:00",
+    "asin": "B014I8SIJY",
+    "free": false,
+    "delivery_text": "$17.37"
   }
 ]
