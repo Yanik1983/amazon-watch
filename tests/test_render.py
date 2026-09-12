@@ -27,7 +27,7 @@ def test_paid_state_renders_badge_and_details():
     assert "DI ORO Silicone Ladle &lt;Black&gt;" in page  # escaped
     assert "https://www.amazon.com/dp/B07W1P15GL" in page
     assert "Sold by DI ORO" in page
-    assert "2026-09-12 10:00 UTC" in page
+    assert "2026-09-12 13:00 (10:00 UTC)" in page  # Jerusalem time beside UTC
     assert '<meta http-equiv="refresh" content="600">' in page
 
 
@@ -64,5 +64,22 @@ def test_history_rows_newest_first():
         {"at": "2026-09-12T09:00:00+00:00", "free": True, "delivery_text": "FREE"},
     ]
     page = render_page(base_state(free=True), hist, NOW)
-    assert page.index("2026-09-12 09:00 UTC") < page.index("2026-09-10 08:00 UTC")
+    assert page.index("2026-09-12 12:00") < page.index("2026-09-10 11:00")
     assert page.count("<tr>") == 3  # header + 2 rows
+
+
+def test_check_now_button_links_to_the_workflow():
+    page = render_page(base_state(), [], NOW)
+    assert "Check now" in page
+    assert 'href="https://github.com/Yanik1983/amazon-watch/actions/workflows/poll.yml"' in page
+
+
+def test_next_check_line_is_one_interval_after_the_last_one():
+    page = render_page(base_state(), [], NOW)
+    # last_checked is 10:00 UTC = 13:00 Jerusalem; the interval is one hour
+    assert "Next automatic check: about 2026-09-12 14:00" in page
+
+
+def test_no_next_check_line_before_the_first_poll():
+    page = render_page(state_mod.default_state(), [], NOW)
+    assert "Next automatic check" not in page

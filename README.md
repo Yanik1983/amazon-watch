@@ -23,7 +23,10 @@ state and every change observed so far.
    priority, linking to the product) whenever the product becomes free, and also when the
    first observation already finds it free, which covers a lost `state.json`. Going back to
    paid is recorded but does not push. Every change is appended to `history.json`.
-4. `docs/index.html` is re-rendered on every poll and served by GitHub Pages.
+4. `docs/index.html` is re-rendered on every poll and served by GitHub Pages. It shows
+   the current state, when the next automatic check is due, and a "Check now" button
+   that opens the workflow's Run page on GitHub. Timestamps are Jerusalem local time
+   with UTC beside them.
 5. If three polls in a row fail (captcha, network, layout change), a warning push is sent,
    and repeated once a day for as long as the failures continue.
 

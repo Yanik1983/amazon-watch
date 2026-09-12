@@ -148,6 +148,12 @@ failure, where no answer arrives at all, is not retried; the next poll tries aga
 ### `render.py`
 
 `render_page(state, history, now) -> str`. Static HTML, no JavaScript, no password card.
+Timestamps are rendered in `config.DISPLAY_TZ` (Asia/Jerusalem) with the UTC time beside them,
+falling back to UTC alone where no time zone database is installed. The page carries a
+"Check now" button linking to `config.WORKFLOW_URL`, the workflow's Run page on GitHub, and a
+"Next automatic check" line one `config.POLL_INTERVAL_SECONDS` after the last check. A button
+that triggered the run without leaving the page would need a GitHub token in a public page, so
+the link is used instead.
 Contents: product title linking to the product URL; a large badge reading "FREE shipping to
 Israel" or "Paid shipping" followed by the delivery text; merchant line; last checked and last
 success timestamps in UTC; a warning line with `fail_count` and `last_error` when
