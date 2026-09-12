@@ -1,12 +1,25 @@
 {
-  "last_checked": "2026-09-12T20:33:34.741003+00:00",
+  "command_nonces": [
+    "9071ec037806ebe0"
+  ],
+  "last_checked": "2026-09-12T20:57:24.511264+00:00",
   "products": {
+    "B014I8SIJY": {
+      "checked_at": null,
+      "delivery_text": "",
+      "fail_count": 1,
+      "free": null,
+      "last_error": "address-change: not updated: ",
+      "last_success": null,
+      "merchant": "",
+      "title": ""
+    },
     "B07W1P15GL": {
       "checked_at": "2026-09-12T20:33:34.741003+00:00",
       "delivery_text": "$19.28",
-      "fail_count": 0,
+      "fail_count": 1,
       "free": false,
-      "last_error": null,
+      "last_error": "address-change: not updated: ",
       "last_success": "2026-09-12T20:33:34.741003+00:00",
       "merchant": "",
       "title": "DI ORO Silicone Ladle - Soup & Serving, 600F Heat Resistant, Black"
