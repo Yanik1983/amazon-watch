@@ -168,7 +168,16 @@ def poll_due(st: dict, now: datetime) -> bool:
         return True
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
-    return (now - when).total_seconds() >= config.POLL_INTERVAL_SECONDS
+
+    interval = config.POLL_INTERVAL_SECONDS
+    entries = st.get("products") or {}
+    if entries and all(int(e.get("fail_count") or 0) > 0 for e in entries.values()):
+        # Nothing got through last time, which is a transient block far more often
+        # than it is anything else. Come back sooner rather than showing an hour
+        # of stale data. Only ever shortens the wait, and only while everything
+        # is failing, so a working watcher still asks Amazon once an hour.
+        interval = min(interval, config.RETRY_INTERVAL_SECONDS)
+    return (now - when).total_seconds() >= interval
 
 
 def tick(

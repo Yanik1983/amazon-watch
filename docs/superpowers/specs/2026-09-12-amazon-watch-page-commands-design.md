@@ -171,7 +171,11 @@ loop:
 ```
 
 "If due" means `INTERVAL_SECONDS` has passed since `last_checked`, which is read
-from the state file, so the hourly Amazon cadence survives a job restart. A
+from the state file, so the hourly Amazon cadence survives a job restart. The one
+exception is a cycle in which every watched product failed: that is a transient
+block far more often than anything else, so the next attempt comes after
+`RETRY_INTERVAL_SECONDS` (900) instead. It only ever shortens the wait, and only
+while nothing is getting through, so a healthy watcher still asks Amazon hourly. A
 command that changes the product list forces the next tick to poll, so a newly
 added product appears on the page within about a minute rather than at the next
 hour.

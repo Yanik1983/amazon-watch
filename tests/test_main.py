@@ -398,3 +398,38 @@ def test_a_tick_with_no_passphrase_never_reads_the_mailbox(tmp_path):
     tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=FakeNotifier(),
          now=NOW, get=must_not_run, history_path=tmp_path / "history.json",
          **tick_paths(tmp_path))
+
+
+def test_poll_due_waits_the_full_interval_when_healthy():
+    from watch.main import poll_due
+    st = {"last_checked": NOW.isoformat(),
+          "products": {DEF: {"fail_count": 0}, OTHER: {"fail_count": 0}}}
+    assert poll_due(st, NOW + timedelta(seconds=config.POLL_INTERVAL_SECONDS - 1)) is False
+    assert poll_due(st, NOW + timedelta(seconds=config.POLL_INTERVAL_SECONDS)) is True
+
+
+def test_poll_due_retries_sooner_when_everything_failed():
+    from watch.main import poll_due
+    st = {"last_checked": NOW.isoformat(),
+          "products": {DEF: {"fail_count": 2}, OTHER: {"fail_count": 1}}}
+    assert poll_due(st, NOW + timedelta(seconds=config.RETRY_INTERVAL_SECONDS - 1)) is False
+    assert poll_due(st, NOW + timedelta(seconds=config.RETRY_INTERVAL_SECONDS)) is True
+
+
+def test_poll_due_keeps_the_full_interval_when_one_product_still_works():
+    from watch.main import poll_due
+    st = {"last_checked": NOW.isoformat(),
+          "products": {DEF: {"fail_count": 0}, OTHER: {"fail_count": 5}}}
+    assert poll_due(st, NOW + timedelta(seconds=config.RETRY_INTERVAL_SECONDS)) is False
+
+
+def test_poll_due_on_a_first_run_or_a_broken_timestamp():
+    from watch.main import poll_due
+    assert poll_due({}, NOW) is True
+    assert poll_due({"last_checked": "garbage"}, NOW) is True
+
+
+def test_poll_due_with_no_products_uses_the_full_interval():
+    from watch.main import poll_due
+    st = {"last_checked": NOW.isoformat(), "products": {}}
+    assert poll_due(st, NOW + timedelta(seconds=config.RETRY_INTERVAL_SECONDS)) is False
