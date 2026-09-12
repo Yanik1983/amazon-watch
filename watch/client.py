@@ -50,18 +50,22 @@ def _check_page(resp, step: str) -> str:
     return text
 
 
-def fetch_product(asin: str = config.DEFAULT_ASIN, session=None, country: str = config.COUNTRY) -> str:
-    """Return the product page HTML rendered for a shopper in `country`."""
-    s = session or new_session()
-    url = f"{config.BASE_URL}/dp/{asin}"
+def set_israel(session, asin: str = config.DEFAULT_ASIN,
+               country: str = config.COUNTRY) -> None:
+    """Put this session's ship-to country into `country`.
 
-    first = _check_page(s.get(url, timeout=TIMEOUT), "first GET")
+    One handshake serves a whole poll cycle: Amazon keeps the choice in the
+    session's cookies, so every later page fetched on the same session is already
+    rendered for that country. Verification is left to fetch_page, which checks
+    the glow line on every page it returns.
+    """
+    url = config.product_url(asin)
+    first = _check_page(session.get(url, timeout=TIMEOUT), "first GET")
     m = TOKEN_RE.search(first)
     if not m:
         raise FetchError("token: anti-csrftoken-a2z not found in page")
-    token = m.group(1)
 
-    resp = s.post(
+    resp = session.post(
         config.ADDRESS_CHANGE_URL,
         data={
             "locationType": "COUNTRY",
@@ -72,7 +76,7 @@ def fetch_product(asin: str = config.DEFAULT_ASIN, session=None, country: str = 
             "actionSource": "glow",
         },
         headers={
-            "anti-csrftoken-a2z": token,
+            "anti-csrftoken-a2z": m.group(1),
             "Referer": url,
             "X-Requested-With": "XMLHttpRequest",
         },
@@ -82,11 +86,27 @@ def fetch_product(asin: str = config.DEFAULT_ASIN, session=None, country: str = 
         raise FetchError(f"address-change: HTTP {resp.status_code}")
     if not ADDRESS_UPDATED_RE.search(resp.text):
         raise FetchError(f"address-change: not updated: {resp.text[:200]}")
+    log.info("ship-to country set to %s", country)
 
-    second = _check_page(s.get(url, timeout=TIMEOUT), "second GET")
-    g = GLOW_RE.search(second)
+
+def fetch_page(session, asin: str) -> str:
+    """One product page, verified to have been rendered for the Israel context."""
+    html = _check_page(session.get(config.product_url(asin), timeout=TIMEOUT), f"GET {asin}")
+    g = GLOW_RE.search(html)
     if not g or "israel" not in g.group(1).lower():
         found = g.group(1).strip() if g else "(no glow line)"
         raise FetchError(f"glow: ship-to country is not Israel: {found}")
-    log.info("fetched %s in Israel context (%d characters)", asin, len(second))
-    return second
+    log.info("fetched %s in Israel context (%d characters)", asin, len(html))
+    return html
+
+
+def fetch_product(asin: str = config.DEFAULT_ASIN, session=None,
+                  country: str = config.COUNTRY) -> str:
+    """One product page from a fresh session.
+
+    For one-off use. The poll calls set_israel once and then fetch_page per
+    product, so it pays the handshake once rather than once per product.
+    """
+    s = session or new_session()
+    set_israel(s, asin, country)
+    return fetch_page(s, asin)

@@ -119,3 +119,74 @@ def test_every_request_uses_the_shared_timeout():
     s = FakeSession([R(page()), ADDRESS_OK, R(page())])
     fetch_product(session=s)
     assert [kw["timeout"] for _, _, kw in s.calls] == [client.TIMEOUT] * 3
+
+
+def test_set_israel_does_one_get_and_one_post():
+    s = FakeSession([R(page()), ADDRESS_OK])
+    assert client.set_israel(s, "B07W1P15GL") is None
+    assert [c[0] for c in s.calls] == ["GET", "POST"]
+    assert s.calls[1][2]["headers"]["anti-csrftoken-a2z"] == "tok123"
+
+
+def test_set_israel_does_not_check_the_glow_line():
+    """The handshake page may still show the old country; fetch_page is the check."""
+    s = FakeSession([R(page(glow="United States")), ADDRESS_OK])
+    client.set_israel(s, "B07W1P15GL")
+
+
+def test_set_israel_raises_without_a_token():
+    s = FakeSession([R("<html>" + "x" * client.MIN_PAGE_CHARS + "</html>")])
+    with pytest.raises(FetchError, match="token"):
+        client.set_israel(s, "B07W1P15GL")
+
+
+def test_set_israel_raises_when_the_address_is_not_updated():
+    s = FakeSession([R(page()), R('{"isAddressUpdated":0}')])
+    with pytest.raises(FetchError, match="address-change: not updated"):
+        client.set_israel(s, "B07W1P15GL")
+
+
+def test_fetch_page_does_one_get_and_returns_the_body():
+    body = page() + "<!-- only -->"
+    s = FakeSession([R(body)])
+    assert client.fetch_page(s, "B000000001") == body
+    assert [c[0] for c in s.calls] == ["GET"]
+    assert s.calls[0][1] == "https://www.amazon.com/dp/B000000001"
+    assert s.calls[0][2]["timeout"] == client.TIMEOUT
+
+
+def test_fetch_page_raises_on_captcha():
+    s = FakeSession([R("<html>captcha here</html>")])
+    with pytest.raises(FetchError, match="captcha"):
+        client.fetch_page(s, "B000000001")
+
+
+def test_fetch_page_raises_on_a_short_body():
+    s = FakeSession([R(page(size=100))])
+    with pytest.raises(FetchError, match="body too small"):
+        client.fetch_page(s, "B000000001")
+
+
+def test_fetch_page_names_the_asin_in_its_error():
+    s = FakeSession([R(page(), status_code=503)])
+    with pytest.raises(FetchError, match="GET B000000001: HTTP 503"):
+        client.fetch_page(s, "B000000001")
+
+
+def test_fetch_page_raises_when_the_glow_line_is_not_israel():
+    s = FakeSession([R(page(glow="United States"))])
+    with pytest.raises(FetchError, match="Israel"):
+        client.fetch_page(s, "B000000001")
+
+
+def test_one_handshake_then_a_page_per_product():
+    """The poll's shape: two requests to set the country, then one per product."""
+    s = FakeSession([R(page()), ADDRESS_OK, R(page()), R(page())])
+    client.set_israel(s)
+    client.fetch_page(s, "B07W1P15GL")
+    client.fetch_page(s, "B000000001")
+    assert [c[0] for c in s.calls] == ["GET", "POST", "GET", "GET"]
+    assert [c[1] for c in s.calls[2:]] == [
+        "https://www.amazon.com/dp/B07W1P15GL",
+        "https://www.amazon.com/dp/B000000001",
+    ]
