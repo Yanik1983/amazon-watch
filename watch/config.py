@@ -28,6 +28,13 @@ NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")
 NTFY_EMAIL = os.environ.get("NTFY_EMAIL", "")
 NTFY_TOKEN = os.environ.get("NTFY_TOKEN", "")
 
+# Passphrase the status page signs its add/remove commands with. Unset means the
+# page cannot change anything and the watcher simply never looks for commands.
+CMD_PASSPHRASE = os.environ.get("CMD_PASSPHRASE", "")
+
+# Seconds between mailbox checks while the poll job waits for its next Amazon poll.
+TICK_SECONDS = int(os.environ.get("TICK_SECONDS") or 60)
+
 # Where the workflow that polls lives, so the status page can offer a manual run.
 REPO_URL = "https://github.com/Yanik1983/amazon-watch"
 WORKFLOW_URL = f"{REPO_URL}/actions/workflows/poll.yml"

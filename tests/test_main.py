@@ -297,3 +297,104 @@ def test_removing_a_product_drops_its_state(tmp_path):
     assert load_state(p["state_path"])["products"].keys() == {DEF}
     # history keeps the record of what happened
     assert {e["asin"] for e in read_history(tmp_path)} == {DEF, OTHER}
+
+
+# --- ticks: the mailbox every minute, Amazon once an hour ------------------
+
+
+def no_mailbox(url, **kw):
+    """A mailbox that is always empty."""
+    class R:
+        status_code = 200
+        text = ""
+    return R()
+
+
+def tick_paths(tmp_path, entries=None):
+    p = paths(tmp_path, entries)
+    p.pop("history_path")  # tick passes the rest through to run()
+    return p
+
+
+def test_a_tick_polls_when_no_poll_has_ever_run(tmp_path):
+    from watch.main import tick
+    n = FakeNotifier()
+    st = tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW,
+              get=no_mailbox, history_path=tmp_path / "history.json",
+              **tick_paths(tmp_path))
+    assert st["last_checked"] == NOW.isoformat()
+    assert st["products"][DEF]["free"] is False
+
+
+def test_a_tick_inside_the_interval_does_not_poll(tmp_path):
+    from watch.main import tick
+    n = FakeNotifier()
+    p = tick_paths(tmp_path)
+    hp = tmp_path / "history.json"
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW,
+         get=no_mailbox, history_path=hp, **p)
+
+    def must_not_run(asin):
+        raise AssertionError("Amazon was polled inside the interval")
+
+    st = tick(passphrase="", fetch=must_not_run, notifier=n,
+              now=NOW + timedelta(minutes=30), get=no_mailbox, history_path=hp, **p)
+    assert st["last_checked"] == NOW.isoformat()  # unchanged
+
+
+def test_a_tick_after_the_interval_polls_again(tmp_path):
+    from watch.main import tick
+    n = FakeNotifier()
+    p = tick_paths(tmp_path)
+    hp = tmp_path / "history.json"
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW,
+         get=no_mailbox, history_path=hp, **p)
+    later = NOW + timedelta(hours=1)
+    st = tick(passphrase="", fetch=fetch_returning(FREE), notifier=n, now=later,
+              get=no_mailbox, history_path=hp, **p)
+    assert st["last_checked"] == later.isoformat()
+    assert len(n.sent) == 1
+
+
+def test_a_command_forces_a_poll_on_the_same_tick(tmp_path):
+    """Adding a product from the page must show it without waiting for the hour."""
+    import json as _json
+    import time as _time
+    from watch import commands
+    from watch.main import tick
+
+    phrase = "test-phrase"
+    cmd = {"action": "add", "product": OTHER, "label": "Kettle",
+           "ts": int(_time.time()), "nonce": "abc", "v": 1}
+    body = _json.dumps({"cmd": cmd, "sig": commands.sign(phrase, cmd)})
+
+    def mailbox(url, **kw):
+        class R:
+            status_code = 200
+            text = _json.dumps({"event": "message", "message": body})
+        return R()
+
+    n = FakeNotifier()
+    p = tick_paths(tmp_path, [entry(DEF, "Ladle")])
+    hp = tmp_path / "history.json"
+    tick(passphrase=phrase, fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW,
+         get=no_mailbox, post=lambda *a, **k: None, history_path=hp, **p)
+
+    # well inside the hour, but a command landed
+    later = NOW + timedelta(minutes=5)
+    st = tick(passphrase=phrase, fetch=fetch_returning(NOT_FREE), notifier=n, now=later,
+              get=mailbox, post=lambda *a, **k: None, history_path=hp, **p)
+    assert st["last_checked"] == later.isoformat()
+    assert sorted(st["products"]) == sorted([DEF, OTHER])
+    assert st["command_nonces"] == ["abc"]
+
+
+def test_a_tick_with_no_passphrase_never_reads_the_mailbox(tmp_path):
+    from watch.main import tick
+
+    def must_not_run(url, **kw):
+        raise AssertionError("the mailbox was read without a passphrase")
+
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=FakeNotifier(),
+         now=NOW, get=must_not_run, history_path=tmp_path / "history.json",
+         **tick_paths(tmp_path))

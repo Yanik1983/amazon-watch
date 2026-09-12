@@ -115,16 +115,19 @@ def apply_commands(passphrase, products_path, state, now, get=..., post=...) -> 
 network failure, a rate limit, or a malformed note is logged and skipped, because
 a mailbox problem must not stop the watcher from watching.
 
-It reads `https://ntfy.sh/<topic>/json?poll=1&since=<n>s`, where `n` covers the
-time since the last check plus a margin, capped at `COMMAND_MAX_AGE`. ntfy
+It reads `https://ntfy.sh/<topic>/json?poll=1&since=<COMMAND_MAX_AGE>s`. ntfy
 returns one JSON object per line.
 
 ### `state.py`
 
-Two fields are added to the top level, beside `last_checked`:
+One field is added to the top level, beside `last_checked`: `command_nonces`, the
+list of applied nonces, newest last, capped at `NONCE_MEMORY`.
 
-- `command_nonces`: list of applied nonces, newest last, capped at `NONCE_MEMORY`
-- `last_command_check`: ISO timestamp of the last mailbox check
+There is deliberately no "last checked the mailbox" timestamp. Storing one would
+rewrite `state.json` on every tick and so commit and push a change every minute.
+Each check instead reads the whole `COMMAND_MAX_AGE` window, and the nonce list
+rejects anything already applied, so `state.json` changes only when a poll runs or
+a command is accepted.
 
 ### `main.py`
 
