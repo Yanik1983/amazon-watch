@@ -167,12 +167,14 @@ products is 12 requests an hour.
 def default_state() -> dict                        # {"version": 2, "last_checked": None, "products": {}}
 def default_entry() -> dict
 def load(path) -> dict                             # migrates version 1
-def save(path, state, keep_asins=None) -> None     # drops entries not in keep_asins
-def entry(state, asin) -> dict                     # existing entry or a fresh default
+def save(path, state) -> None
+def entry(state, asin) -> dict                     # existing entry, inserted if absent
+def prune(state, keep_asins) -> None               # drops entries not in keep_asins
 ```
 
-`save` with `keep_asins=None` keeps everything, so callers that do not know the
-product list cannot accidentally delete state.
+`prune` mutates the state dict, so the pruned view is what both the saved file
+and the rendered page see. Callers that do not know the product list simply do
+not call it and cannot accidentally delete state.
 
 ### `history.py`
 
@@ -217,8 +219,8 @@ One cycle:
    - Otherwise send one push per crossed product: title
      `Amazon watcher failing: <label>`, tags `warning,<slug>`.
    - Priority stays `default` for every warning.
-5. Save state with `keep_asins` set to the watched ASINs, save history if it
-   changed, render the page.
+5. Prune state to the watched ASINs, save it, save history if it changed, and
+   render the page.
 
 `run()` keeps its injectable seams so tests stay offline. Its `fetch` parameter
 keeps the signature `fetch(asin) -> str`; the default builds a session, calls
