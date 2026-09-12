@@ -13,20 +13,20 @@ from pathlib import Path
 from watch.client import fetch_product
 
 SECTIONS = [
-    (r'<span id="productTitle".*?</span>', re.S),
-    (r'<span id="glow-ingress-line2".*?</span>', re.S),
-    (r'id="mir-layout-DELIVERY_BLOCK"', 0),
-    (r'id="merchantInfo"', 0),
+    (r'<span id="productTitle".*?</span>', re.S, "productTitle"),
+    (r'<span id="glow-ingress-line2".*?</span>', re.S, "glow-ingress-line2"),
+    (r'id="mir-layout-DELIVERY_BLOCK"', 0, "DELIVERY_BLOCK"),
+    (r'id="merchantInfo"', 0, "merchantInfo"),
 ]
 WINDOW = 6000  # bytes kept after an id-only anchor
 
 
 def trim(html: str) -> str:
     parts = ["<html><body>"]
-    for pattern, flags in SECTIONS:
+    for pattern, flags, label in SECTIONS:
         m = re.search(pattern, html, flags)
         if not m:
-            parts.append(f"<!-- missing: {pattern} -->")
+            parts.append(f"<!-- section not found: {label} -->")
             continue
         if pattern.startswith("id="):
             parts.append("<div " + html[m.start(): m.start() + WINDOW])

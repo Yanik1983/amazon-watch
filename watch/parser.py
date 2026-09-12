@@ -5,6 +5,7 @@ import html as html_mod
 import re
 from dataclasses import dataclass
 
+COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 DELIVERY_PRICE_RE = re.compile(r'data-csa-c-delivery-price="([^"]*)"')
 DELIVERY_BLOCK_ANCHOR = 'id="mir-layout-DELIVERY_BLOCK"'
 DELIVERY_BLOCK_WINDOW = 6000  # bytes of HTML read after the anchor for text fallbacks
@@ -32,6 +33,7 @@ def _text(fragment: str) -> str:
 
 
 def parse(html: str) -> Product:
+    html = COMMENT_RE.sub("", html)
     price = DELIVERY_PRICE_RE.search(html)
     anchor = html.find(DELIVERY_BLOCK_ANCHOR)
     if price is None and anchor < 0:

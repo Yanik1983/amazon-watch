@@ -75,3 +75,18 @@ def test_delivery_text_nbsp_normalized_to_space():
         '<span data-csa-c-delivery-price="ILS&nbsp;58.91"></span></div>'
     )
     assert parse(html).delivery_text == "ILS 58.91"
+
+
+def test_anchor_inside_comment_does_not_count():
+    with pytest.raises(ParseError):
+        parse('<!-- id="mir-layout-DELIVERY_BLOCK" --><p>x</p>')
+
+
+def test_merchant_anchor_inside_comment_ignored():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK">'
+        '<span data-csa-c-delivery-price="FREE"></span></div>'
+        '<!-- id="merchantInfo" --><div>junk</div>'
+    )
+    p = parse(html)
+    assert p.merchant == ""
