@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from html import escape
 
-from watch import config
+from watch import config, history as history_mod, products
 
 try:  # zoneinfo needs tzdata on some platforms; the page still renders without it
     from zoneinfo import ZoneInfo
@@ -30,6 +30,12 @@ h1 a { color: inherit; }
          background: #1f6feb; color: #fff; font-weight: 700; font-size: 1.05rem;
          text-align: center; text-decoration: none; }
 .check:active { background: #174ea6; }
+.card { background: #fff; border: 1px solid #e2e2e2; border-radius: .6rem;
+        padding: .9rem 1rem; margin: 1rem 0; }
+.card h2 { font-size: 1.05rem; margin: 0 0 .4rem; }
+.card h2 a { color: inherit; }
+.card .badge { font-size: 1.1rem; }
+.empty { color: #555; font-style: italic; margin: 1.5rem 0; }
 table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #ddd; }
 """
@@ -63,33 +69,77 @@ def _fmt(iso: str | None) -> str:
     return f"{_local(when)} ({when.astimezone(timezone.utc).strftime('%H:%M')} UTC)"
 
 
-def render_page(state: dict, history: list[dict], now: datetime) -> str:
-    product = (state.get("products") or {}).get(config.DEFAULT_ASIN) or {}
-    free = product.get("free")
+def _badge(free) -> tuple[str, str]:
     if free is True:
-        cls, badge = "free", "FREE shipping to Israel"
-    elif free is False:
-        cls, badge = "paid", "Paid shipping"
-    else:
-        cls, badge = "unknown", "No data yet"
+        return "free", "FREE shipping to Israel"
+    if free is False:
+        return "paid", "Paid shipping"
+    return "unknown", "No data yet"
 
-    title = escape(product.get("title") or f"ASIN {config.DEFAULT_ASIN}")
-    delivery = escape(product.get("delivery_text") or "")
-    merchant = escape(product.get("merchant") or "")
 
+def _card(entry: dict, ps: dict, rows: list[dict]) -> str:
+    """One product: what it costs to ship now, and every change seen so far."""
+    asin = entry.get("asin", "")
+    label = escape(products.display_label(entry, ps.get("title") or ""))
+    cls, badge = _badge(ps.get("free"))
+    out = [
+        '<div class="card">',
+        f'<h2><a href="{escape(config.product_url(asin))}">{label}</a></h2>',
+        f'<div class="badge {cls}">{badge}</div>',
+    ]
+    delivery = escape(ps.get("delivery_text") or "")
+    if delivery:
+        out.append(f'<p class="meta">Delivery: {delivery}</p>')
+    merchant = escape(ps.get("merchant") or "")
+    if merchant:
+        out.append(f'<p class="meta">{merchant}</p>')
+    out.append(f'<p class="meta">Last good reading: {_fmt(ps.get("last_success"))}</p>')
+    fails = int(ps.get("fail_count") or 0)
+    if fails > 0:
+        err = escape(str(ps.get("last_error") or ""))
+        out.append(f'<div class="warn">{fails} consecutive failed polls. Last error: {err}</div>')
+    if rows:
+        out.append("<table><tr><th>When</th><th>State</th><th>Delivery</th></tr>")
+        for e in reversed(rows):
+            when = _parse(e.get("at"))
+            shown = _local(when) if when else escape(str(e.get("at") or ""))
+            out.append(
+                f"<tr><td>{shown}</td><td>{'FREE' if e.get('free') else 'Paid'}</td>"
+                f"<td>{escape(str(e.get('delivery_text') or ''))}</td></tr>"
+            )
+        out.append("</table>")
+    out.append("</div>")
+    return "\n".join(out)
+
+
+def render_page(state: dict, history: list[dict], product_list: list[dict],
+                now: datetime) -> str:
+    entries = state.get("products") or {}
     parts = [
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
         '<meta http-equiv="refresh" content="600">',
         "<title>Amazon free-shipping watch</title>",
         f"<style>{STYLE}</style></head><body>",
-        f'<h1><a href="{escape(config.product_url(config.DEFAULT_ASIN))}">{title}</a></h1>',
-        f'<div class="badge {cls}">{badge}</div>',
+        "<h1>Free shipping to Israel</h1>",
     ]
-    if delivery:
-        parts.append(f'<p class="meta">Delivery: {delivery}</p>')
-    if merchant:
-        parts.append(f'<p class="meta">{merchant}</p>')
+
+    # Free first, then the order the products were added: whatever is buyable now
+    # is what the page is for, so it goes at the top where a phone shows it.
+    ordered = sorted(
+        enumerate(product_list),
+        key=lambda item: (
+            0 if (entries.get(item[1].get("asin")) or {}).get("free") is True else 1,
+            item[0],
+        ),
+    )
+    if ordered:
+        for _, entry in ordered:
+            asin = entry.get("asin", "")
+            parts.append(_card(entry, entries.get(asin) or {},
+                               history_mod.for_asin(history, asin)))
+    else:
+        parts.append('<p class="empty">No products are being watched.</p>')
 
     last_checked = _parse(state.get("last_checked"))
     next_line = ""
@@ -98,7 +148,6 @@ def render_page(state: dict, history: list[dict], now: datetime) -> str:
         next_line = f"Next automatic check: about {_local(nxt)}<br>"
     parts.append(
         f'<p class="meta">Last checked: {_fmt(state.get("last_checked"))}<br>'
-        f'Last success: {_fmt(product.get("last_success"))}<br>'
         f'{next_line}'
         f'Page rendered: {_fmt(now.isoformat())}</p>'
     )
@@ -107,25 +156,11 @@ def render_page(state: dict, history: list[dict], now: datetime) -> str:
         '<p class="meta">Opens GitHub Actions. Tap "Run workflow" there, then reload this page '
         'in about a minute. A manual run also restarts the hourly cycle.</p>'
     )
-    fails = int(product.get("fail_count") or 0)
-    if fails > 0:
-        err = escape(str(product.get("last_error") or ""))
-        parts.append(f'<div class="warn">{fails} consecutive failed polls. Last error: {err}</div>')
-
-    parts.append("<h2>History</h2>")
-    if history:
-        parts.append("<table><tr><th>When</th><th>State</th><th>Delivery</th></tr>")
-        for e in reversed(history):
-            label = "FREE" if e.get("free") else "Paid"
-            when = _parse(e.get("at"))
-            shown = _local(when) if when else escape(str(e.get("at") or ""))
-            parts.append(
-                f"<tr><td>{shown}</td><td>{label}</td>"
-                f"<td>{escape(str(e.get('delivery_text') or ''))}</td></tr>"
-            )
-        parts.append("</table>")
-    else:
-        parts.append('<p class="meta">No observations recorded yet.</p>')
+    parts.append(
+        f'<a class="check" href="{escape(config.MANAGE_WORKFLOW_URL)}">Manage products</a>'
+        '<p class="meta">Opens GitHub Actions. Tap "Run workflow", choose add or remove, and '
+        'paste an ASIN or an Amazon link. The next check starts by itself.</p>'
+    )
     parts.append(
         f'<p class="meta">Times are {escape(config.DISPLAY_TZ.split("/")[-1])} local unless '
         'marked UTC.</p>'
