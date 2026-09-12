@@ -72,8 +72,15 @@ def save(path: str | Path, entries: list[dict]) -> None:
 def add(entries: list[dict], asin: str, label: str, when: datetime) -> list[dict]:
     """A new list with `asin` appended. Raises if it is already watched."""
     asin = extract_asin(asin)
-    if any(e["asin"] == asin for e in entries):
-        raise ProductError(f"{asin} is already being watched")
+    existing = next((e for e in entries if e["asin"] == asin), None)
+    if existing is not None:
+        # Naming it matters: on Amazon each colour and size is its own ASIN, so a
+        # link copied before picking the variant carries the one already watched,
+        # and "already being watched" on its own reads as a bug rather than that.
+        name = (existing.get("label") or "").strip()
+        raise ProductError(
+            f"{asin} is already being watched" + (f' as "{name}"' if name else "")
+        )
     return list(entries) + [
         {"asin": asin, "label": (label or "").strip(), "added": when.isoformat()}
     ]
