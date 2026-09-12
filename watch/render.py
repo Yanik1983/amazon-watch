@@ -75,6 +75,9 @@ FORM = """
 <label for="cmd-product">ASIN or Amazon link</label>
 <input type="text" id="cmd-product" inputmode="url"
        placeholder="B07W1P15GL or https://www.amazon.com/dp/...">
+<p class="meta">Each colour and size is a separate product on Amazon, with its own
+price and its own shipping. Choose the one you want on Amazon first, then copy the
+link from the address bar.</p>
 <label for="cmd-label">Name to show (optional)</label>
 <input type="text" id="cmd-label" placeholder="left empty, the page title is used">
 <button type="submit" id="cmd-send">Send</button>

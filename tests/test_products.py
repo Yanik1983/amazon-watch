@@ -41,8 +41,15 @@ def test_add_accepts_a_url():
 
 def test_add_rejects_duplicate():
     entries = products.add([], "B07W1P15GL", "", WHEN)
-    with pytest.raises(products.ProductError):
+    with pytest.raises(products.ProductError, match="already being watched"):
         products.add(entries, "B07W1P15GL", "again", WHEN)
+
+
+def test_add_names_the_product_already_watched():
+    """A colour variant shares no ASIN, so a duplicate means the same item, not a bug."""
+    entries = products.add([], "B07W1P15GL", "Ladle Black", WHEN)
+    with pytest.raises(products.ProductError, match='already being watched as "Ladle Black"'):
+        products.add(entries, "https://www.amazon.com/dp/B07W1P15GL?th=1", "Ladle Red", WHEN)
 
 
 def test_remove_drops_without_mutating():
