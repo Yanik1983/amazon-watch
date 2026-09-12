@@ -57,5 +57,10 @@ jobs:
             echo "products.json unchanged"
           else
             git commit -q -m "chore: $ACTION product $PRODUCT"
-            git push -q origin HEAD:main
+            # The poll pushes to main every hour, so a collision is possible.
+            # Rebase onto whatever landed and try once more before failing.
+            git push -q origin HEAD:main || {
+              git pull -q --rebase origin main
+              git push -q origin HEAD:main
+            }
           fi
