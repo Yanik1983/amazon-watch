@@ -213,3 +213,16 @@ def test_the_manage_workflow_stays_as_a_fallback():
 def test_the_script_uses_the_same_command_version_as_the_watcher():
     from watch import commands
     assert f"VERSION = {commands.COMMAND_VERSION}" in page_with_form()
+
+
+def test_each_card_shows_its_asin():
+    page = render_page(two_product_state(), [],
+                       [entry(DEF, "Ladle"), entry(OTHER, "Kettle")], NOW)
+    assert f'<p class="asin">{DEF}</p>' in page
+    assert f'<p class="asin">{OTHER}</p>' in page
+
+
+def test_the_asin_is_shown_even_without_a_reading():
+    """A product added a moment ago has no data yet but still needs its identity."""
+    page = render_page(state_mod.default_state(), [], [entry(OTHER, "Kettle")], NOW)
+    assert f'<p class="asin">{OTHER}</p>' in page
