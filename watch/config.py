@@ -44,6 +44,13 @@ MANAGE_WORKFLOW_URL = f"{REPO_URL}/actions/workflows/manage.yml"
 # here keeps the "next check" line on the status page honest without a second constant.
 POLL_INTERVAL_SECONDS = int(os.environ.get("INTERVAL_SECONDS") or 3600)
 
+# How soon to try again when every watched product failed its last poll. A total
+# failure is usually a transient block rather than a reason to serve stale data
+# for a whole hour, and retrying only in that case adds no traffic when things
+# are working. It also brings the first failure warning forward to about 45
+# minutes (FAIL_ALERT_AT polls) instead of three hours.
+RETRY_INTERVAL_SECONDS = 900
+
 # Timestamps on the status page are shown in this zone as well as in UTC.
 DISPLAY_TZ = "Asia/Jerusalem"
 

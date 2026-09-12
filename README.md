@@ -34,9 +34,11 @@ state of every watched product and every change observed so far.
    "Check now" button and the add/remove form. Timestamps are Jerusalem local time
    with UTC beside them.
 6. If three polls in a row fail for a product (captcha, network, layout change), a
-   warning push is sent for it and repeated once a day while the failures continue.
-   When every watched product fails at once — a captcha or a network problem rather
-   than a product problem — one combined warning is sent instead of one per product.
+   warning push is sent for it and repeated while the failures continue. When every
+   watched product fails at once — a captcha or a network problem rather than a
+   product problem — one combined warning is sent instead of one per product, and
+   the next attempt comes after 15 minutes rather than an hour, so a transient
+   block does not leave the page stale for an hour.
 
 The GitHub Actions job is one long loop that ticks every minute for about 5 h 50 m.
 A tick reads the command mailbox and asks Amazon only when an hour has passed since
