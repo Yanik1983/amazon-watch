@@ -44,13 +44,15 @@ def run(
     st = state_mod.load(state_path)
     history = history_mod.load(history_path)
 
+    e_state = state_mod.entry(st, config.DEFAULT_ASIN)
+
     try:
         product: Product = parse(fetch(config.DEFAULT_ASIN))
     except (FetchError, ParseError) as e:
-        st["fail_count"] = int(st.get("fail_count", 0)) + 1
-        st["last_error"] = str(e)
-        log.error("poll failed (%d in a row): %s", st["fail_count"], e)
-        fail_count = st["fail_count"]
+        e_state["fail_count"] = int(e_state.get("fail_count", 0)) + 1
+        e_state["last_error"] = str(e)
+        log.error("poll failed (%d in a row): %s", e_state["fail_count"], e)
+        fail_count = e_state["fail_count"]
         should_warn = fail_count == config.FAIL_ALERT_AT or (
             fail_count > config.FAIL_ALERT_AT
             and (fail_count - config.FAIL_ALERT_AT) % config.FAIL_REWARN_EVERY == 0
@@ -58,29 +60,28 @@ def run(
         if should_warn:
             notifier(
                 "Amazon watcher failing",
-                f"{st['fail_count']} consecutive polls failed. Last error: {e}",
+                f"{e_state['fail_count']} consecutive polls failed. Last error: {e}",
                 priority="default",
                 tags="warning",
             )
         return _finish(st, history, False, state_path, history_path, page_path, now)
 
-    st["fail_count"] = 0
-    st["last_error"] = None
-    st["last_success"] = now.isoformat()
-    previous = st.get("product") or None
-    prev_free = previous.get("free") if previous else None
+    prev_free = e_state.get("free")
+    e_state["fail_count"] = 0
+    e_state["last_error"] = None
+    e_state["last_success"] = now.isoformat()
 
     history_changed = False
     announce = False
     if prev_free is None:
         # Nothing recorded before: either the first ever poll, or state.json was lost.
         # Free right now is news in both cases, so it is announced.
-        history_mod.append_flip(history, now, product.free, product.delivery_text)
+        history_mod.append_flip(history, now, config.DEFAULT_ASIN, product.free, product.delivery_text)
         history_changed = True
         announce = product.free
         log.info("first observation: free=%s (%s)", product.free, product.delivery_text)
     elif product.free != prev_free:
-        history_mod.append_flip(history, now, product.free, product.delivery_text)
+        history_mod.append_flip(history, now, config.DEFAULT_ASIN, product.free, product.delivery_text)
         history_changed = True
         announce = product.free
         if not product.free:
@@ -97,7 +98,8 @@ def run(
         )
         log.info("notified: free shipping available")
 
-    st["product"] = {**asdict(product), "checked_at": now.isoformat()}
+    e_state.update(asdict(product))
+    e_state["checked_at"] = now.isoformat()
     return _finish(st, history, history_changed, state_path, history_path, page_path, now)
 
 
@@ -107,7 +109,8 @@ def main() -> int:
     )
     try:
         st = run()
-        log.info("done: fail_count=%s free=%s", st["fail_count"], (st.get("product") or {}).get("free"))
+        e = st["products"].get(config.DEFAULT_ASIN) or {}
+        log.info("done: fail_count=%s free=%s", e.get("fail_count"), e.get("free"))
     except Exception:  # never fail the workflow; page/state may still be committed
         log.exception("unexpected error in poll")
     return 0

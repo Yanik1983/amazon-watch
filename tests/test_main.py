@@ -7,6 +7,8 @@ from watch.client import FetchError
 from watch.main import run
 from watch.state import load as load_state
 
+DEF = config.DEFAULT_ASIN
+
 FIX = Path(__file__).parent / "fixtures"
 NOT_FREE = (FIX / "not_free.html").read_text(encoding="utf-8")
 FREE = (FIX / "free.html").read_text(encoding="utf-8")
@@ -42,10 +44,10 @@ def test_first_poll_records_without_push(tmp_path):
     n = FakeNotifier()
     st = run(fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW, **paths(tmp_path))
     assert n.sent == []
-    assert st["product"]["free"] is False
-    assert st["product"]["checked_at"] == NOW.isoformat()
-    assert st["last_success"] == NOW.isoformat()
-    assert st["fail_count"] == 0
+    assert st["products"][DEF]["free"] is False
+    assert st["products"][DEF]["checked_at"] == NOW.isoformat()
+    assert st["products"][DEF]["last_success"] == NOW.isoformat()
+    assert st["products"][DEF]["fail_count"] == 0
     assert (tmp_path / "docs" / "index.html").exists()
     assert load_state(tmp_path / "state.json") == st
     import json
@@ -88,7 +90,7 @@ def test_first_poll_pushes_when_already_free(tmp_path):
     assert n.sent[0]["title"] == "Amazon: free shipping to Israel!"
     assert n.sent[0]["click"] == config.product_url(config.DEFAULT_ASIN)
     assert n.sent[0]["priority"] == "high"
-    assert st["product"]["free"] is True
+    assert st["products"][DEF]["free"] is True
 
 
 def test_lost_state_file_re_announces_free(tmp_path):
@@ -115,14 +117,14 @@ def test_failures_alert_once_at_threshold_and_reset(tmp_path):
     p = paths(tmp_path)
     for i in range(1, 5):
         st = run(fetch=fetch_failing, notifier=n, now=NOW, **p)
-        assert st["fail_count"] == i
-        assert "captcha" in st["last_error"]
+        assert st["products"][DEF]["fail_count"] == i
+        assert "captcha" in st["products"][DEF]["last_error"]
     assert len(n.sent) == 1
     assert n.sent[0]["title"] == "Amazon watcher failing"
     assert n.sent[0]["priority"] == "default"
     st = run(fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW, **p)
-    assert st["fail_count"] == 0
-    assert st["last_error"] is None
+    assert st["products"][DEF]["fail_count"] == 0
+    assert st["products"][DEF]["last_error"] is None
 
 
 def test_failures_rewarn_every_24_polls(tmp_path):
@@ -139,9 +141,9 @@ def test_failure_keeps_previous_product(tmp_path):
     p = paths(tmp_path)
     run(fetch=fetch_returning(FREE), notifier=n, now=NOW, **p)
     st = run(fetch=fetch_failing, notifier=n, now=NOW + timedelta(hours=1), **p)
-    assert st["product"]["free"] is True
+    assert st["products"][DEF]["free"] is True
     assert st["last_checked"] == (NOW + timedelta(hours=1)).isoformat()
-    assert st["last_success"] == NOW.isoformat()
+    assert st["products"][DEF]["last_success"] == NOW.isoformat()
     page = (tmp_path / "docs" / "index.html").read_text(encoding="utf-8")
     assert "1 consecutive failed polls" in page
 
@@ -149,5 +151,5 @@ def test_failure_keeps_previous_product(tmp_path):
 def test_parse_error_counts_as_failure(tmp_path):
     n = FakeNotifier()
     st = run(fetch=fetch_returning("<html>no delivery block</html>"), notifier=n, now=NOW, **paths(tmp_path))
-    assert st["fail_count"] == 1
-    assert "delivery block" in st["last_error"]
+    assert st["products"][DEF]["fail_count"] == 1
+    assert "delivery block" in st["products"][DEF]["last_error"]

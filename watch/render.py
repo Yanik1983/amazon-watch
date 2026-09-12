@@ -64,7 +64,7 @@ def _fmt(iso: str | None) -> str:
 
 
 def render_page(state: dict, history: list[dict], now: datetime) -> str:
-    product = state.get("product") or {}
+    product = (state.get("products") or {}).get(config.DEFAULT_ASIN) or {}
     free = product.get("free")
     if free is True:
         cls, badge = "free", "FREE shipping to Israel"
@@ -98,7 +98,7 @@ def render_page(state: dict, history: list[dict], now: datetime) -> str:
         next_line = f"Next automatic check: about {_local(nxt)}<br>"
     parts.append(
         f'<p class="meta">Last checked: {_fmt(state.get("last_checked"))}<br>'
-        f'Last success: {_fmt(state.get("last_success"))}<br>'
+        f'Last success: {_fmt(product.get("last_success"))}<br>'
         f'{next_line}'
         f'Page rendered: {_fmt(now.isoformat())}</p>'
     )
@@ -107,9 +107,9 @@ def render_page(state: dict, history: list[dict], now: datetime) -> str:
         '<p class="meta">Opens GitHub Actions. Tap "Run workflow" there, then reload this page '
         'in about a minute. A manual run also restarts the hourly cycle.</p>'
     )
-    fails = int(state.get("fail_count") or 0)
+    fails = int(product.get("fail_count") or 0)
     if fails > 0:
-        err = escape(str(state.get("last_error") or ""))
+        err = escape(str(product.get("last_error") or ""))
         parts.append(f'<div class="warn">{fails} consecutive failed polls. Last error: {err}</div>')
 
     parts.append("<h2>History</h2>")
