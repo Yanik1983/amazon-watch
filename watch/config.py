@@ -14,6 +14,9 @@ ADDRESS_CHANGE_URL = f"{BASE_URL}/portal-migration/hz/glow/address-change?action
 # Send one warning push when this many consecutive polls have failed.
 FAIL_ALERT_AT = 3
 
+# Polls between repeated warnings while failures continue; 24 polls = one day at hourly cadence.
+FAIL_REWARN_EVERY = 24
+
 # ntfy.sh notification settings, all from repository secrets / variables.
 NTFY_SERVER = os.environ.get("NTFY_SERVER") or "https://ntfy.sh"
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")

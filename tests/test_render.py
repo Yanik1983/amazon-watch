@@ -51,6 +51,13 @@ def test_failure_warning_shown_when_fail_count_positive():
     assert "captcha page returned" in page
 
 
+def test_malformed_timestamp_rendered_verbatim():
+    st = base_state()
+    st["last_checked"] = "garbage"
+    page = render_page(st, [], NOW)
+    assert "garbage" in page
+
+
 def test_history_rows_newest_first():
     hist = [
         {"at": "2026-09-10T08:00:00+00:00", "free": False, "delivery_text": "ILS 58.91"},

@@ -50,7 +50,12 @@ def run(
         st["fail_count"] = int(st.get("fail_count", 0)) + 1
         st["last_error"] = str(e)
         log.error("poll failed (%d in a row): %s", st["fail_count"], e)
-        if st["fail_count"] == config.FAIL_ALERT_AT:
+        fail_count = st["fail_count"]
+        should_warn = fail_count == config.FAIL_ALERT_AT or (
+            fail_count > config.FAIL_ALERT_AT
+            and (fail_count - config.FAIL_ALERT_AT) % config.FAIL_REWARN_EVERY == 0
+        )
+        if should_warn:
             notifier(
                 "Amazon watcher failing",
                 f"{st['fail_count']} consecutive polls failed. Last error: {e}",

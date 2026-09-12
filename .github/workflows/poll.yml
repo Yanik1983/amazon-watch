@@ -60,7 +60,7 @@ jobs:
             else
               git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
             fi
-            git fetch -q origin main
+            git fetch -q origin main || true
             if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
               # Generated files always win over whatever landed upstream meanwhile.
               local_head=$(git rev-parse HEAD)
@@ -68,7 +68,7 @@ jobs:
                 git rebase --abort || true
                 git reset -q --hard origin/main
                 git checkout "$local_head" -- state.json history.json docs/index.html
-                git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+                git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]" || true
               fi
               git push -q origin HEAD:main || echo "push failed; will retry next iteration"
             fi

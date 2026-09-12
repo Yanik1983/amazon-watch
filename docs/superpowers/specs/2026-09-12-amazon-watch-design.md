@@ -81,9 +81,13 @@ The session is injectable so tests use a fake with canned responses. No network 
 `title: str`, `free: bool`, `delivery_text: str`, `merchant: str`.
 
 - `title`: text of `#productTitle`, whitespace collapsed; empty string if missing.
-- `delivery_text`: value of the first `data-csa-c-delivery-price` attribute, HTML-unescaped.
-- `free`: `delivery_text.upper() == "FREE"`, or, if the attribute is missing, the delivery block
-  text contains "FREE international delivery".
+- `delivery_text`: value of the first `data-csa-c-delivery-price` attribute, HTML-unescaped, that
+  is not `fastest` (case-insensitive; `fastest` spans describe the paid express option and are
+  skipped). The search is scoped to `html[anchor:anchor + DELIVERY_BLOCK_WINDOW]` when the
+  `mir-layout-DELIVERY_BLOCK` anchor is present, otherwise the whole document.
+- `free`: the normalised value, upper-cased, is one of `FREE`, `$0.00`, `0.00`, `ILS 0.00`. If
+  every `data-csa-c-delivery-price` match is `fastest` (or the attribute is missing), the
+  delivery block text is checked instead for "FREE international delivery".
 - `merchant`: text of `#merchantInfo` (or `#sellerProfileTriggerId`), whitespace collapsed;
   empty string if missing. Informational only, shown on the page.
 
@@ -137,7 +141,8 @@ content="600">`. Inline CSS, readable on a phone.
 2. Call `fetch(config.ASIN)` then `parse`.
 3. On `FetchError` or `ParseError`: increment `fail_count`, store `last_error`, and when
    `fail_count == FAIL_ALERT_AT` send one push titled "Amazon watcher failing" with priority
-   `default` and tag `warning`. Keep the previous `product`. Go to step 6.
+   `default` and tag `warning`. While failures continue, the warning repeats every
+   `FAIL_REWARN_EVERY` (24) polls. Keep the previous `product`. Go to step 6.
 4. On success: reset `fail_count` to 0, clear `last_error`, set `last_success`. Compare
    `product.free` with the previous `product["free"]`:
    - no previous product: append the initial history entry, no push;

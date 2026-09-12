@@ -14,7 +14,7 @@ from watch.client import fetch_product
 
 SECTIONS = [
     (r'<span id="productTitle".*?</span>', re.S, "productTitle"),
-    (r'<span id="glow-ingress-line2".*?</span>', re.S, "glow-ingress-line2"),
+    (r'<[a-z]+[^>]*id="glow-ingress-line2".*?</[a-z]+>', re.S, "glow-ingress-line2"),
     (r'id="mir-layout-DELIVERY_BLOCK"', 0, "DELIVERY_BLOCK"),
     (r'id="merchantInfo"', 0, "merchantInfo"),
 ]

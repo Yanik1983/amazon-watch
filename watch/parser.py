@@ -9,6 +9,7 @@ COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 DELIVERY_PRICE_RE = re.compile(r'data-csa-c-delivery-price="([^"]*)"')
 DELIVERY_BLOCK_ANCHOR = 'id="mir-layout-DELIVERY_BLOCK"'
 DELIVERY_BLOCK_WINDOW = 6000  # bytes of HTML read after the anchor for text fallbacks
+FREE_VALUES = frozenset({"FREE", "$0.00", "0.00", "ILS 0.00"})
 TITLE_RE = re.compile(r'id="productTitle"[^>]*>(.*?)</span>', re.S)
 MERCHANT_RE = re.compile(r'id="merchantInfo"[^>]*>(.*?)</div>', re.S)
 SELLER_RE = re.compile(r'id="sellerProfileTriggerId"[^>]*>(.*?)</a>', re.S)
@@ -34,17 +35,27 @@ def _text(fragment: str) -> str:
 
 def parse(html: str) -> Product:
     html = COMMENT_RE.sub("", html)
-    price = DELIVERY_PRICE_RE.search(html)
     anchor = html.find(DELIVERY_BLOCK_ANCHOR)
-    if price is None and anchor < 0:
-        raise ParseError("no delivery block found on page")
-
-    if price is not None:
-        delivery_text = html_mod.unescape(price.group(1)).replace("\xa0", " ").strip()
-        free = delivery_text.upper() == "FREE"
+    if anchor >= 0:
+        search_text = html[anchor: anchor + DELIVERY_BLOCK_WINDOW]
     else:
+        search_text = html
+
+    delivery_text = ""
+    free = None
+    for m in DELIVERY_PRICE_RE.finditer(search_text):
+        value = html_mod.unescape(m.group(1)).replace("\xa0", " ").strip()
+        if value.lower() == "fastest":
+            continue
+        delivery_text = value
+        free = value.upper() in FREE_VALUES
+        break
+
+    if free is None:
+        if anchor < 0:
+            raise ParseError("no delivery block found on page")
         delivery_text = ""
-        block = _text(html[anchor: anchor + DELIVERY_BLOCK_WINDOW])
+        block = _text(search_text)
         free = "free international delivery" in block.lower()
 
     t = TITLE_RE.search(html)

@@ -44,7 +44,7 @@ def send(
 def _post(post, url: str, body: str, headers: dict) -> bool:
     try:
         resp = post(url, data=body.encode("utf-8"), headers=headers, timeout=20)
-    except requests.RequestException as e:
+    except Exception as e:
         log.error("ntfy send failed: %s", e)
         return False
     if getattr(resp, "status_code", 0) != 200:

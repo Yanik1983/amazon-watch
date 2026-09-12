@@ -92,3 +92,13 @@ def test_send_returns_false_on_exception(monkeypatch):
         raise requests.ConnectionError("down")
 
     assert notify.send("t", "b", post=boom) is False
+
+
+def test_send_returns_false_on_unexpected_exception(monkeypatch):
+    monkeypatch.setattr(notify.config, "NTFY_TOPIC", "t")
+    monkeypatch.setattr(notify.config, "NTFY_EMAIL", "")
+
+    def boom(*a, **k):
+        raise UnicodeEncodeError("ascii", "x", 0, 1, "bad")
+
+    assert notify.send("t", "b", post=boom) is False

@@ -105,6 +105,15 @@ def test_failures_alert_once_at_threshold_and_reset(tmp_path):
     assert st["last_error"] is None
 
 
+def test_failures_rewarn_every_24_polls(tmp_path):
+    n = FakeNotifier()
+    p = paths(tmp_path)
+    for i in range(1, 28):
+        run(fetch=fetch_failing, notifier=n, now=NOW, **p)
+    assert len(n.sent) == 2
+    assert all(msg["title"] == "Amazon watcher failing" for msg in n.sent)
+
+
 def test_failure_keeps_previous_product(tmp_path):
     n = FakeNotifier()
     p = paths(tmp_path)

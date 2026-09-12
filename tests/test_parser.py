@@ -90,3 +90,45 @@ def test_merchant_anchor_inside_comment_ignored():
     )
     p = parse(html)
     assert p.merchant == ""
+
+
+def test_price_outside_block_ignored_when_block_present():
+    html = (
+        '<span data-csa-c-delivery-price="FREE"></span>'
+        '<div id="mir-layout-DELIVERY_BLOCK">'
+        '<span data-csa-c-delivery-price="ILS 58.91"></span></div>'
+    )
+    p = parse(html)
+    assert p.free is False
+    assert p.delivery_text == "ILS 58.91"
+
+
+def test_fastest_value_skipped():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK">'
+        '<span data-csa-c-delivery-price="fastest"></span>'
+        '<span data-csa-c-delivery-price="FREE"></span></div>'
+    )
+    p = parse(html)
+    assert p.free is True
+    assert p.delivery_text == "FREE"
+
+
+def test_zero_dollar_counts_as_free():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK">'
+        '<span data-csa-c-delivery-price="$0.00"></span></div>'
+    )
+    p = parse(html)
+    assert p.free is True
+
+
+def test_only_fastest_falls_back_to_text():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK">'
+        '<span data-csa-c-delivery-price="fastest"></span>'
+        'FREE international delivery</div>'
+    )
+    p = parse(html)
+    assert p.free is True
+    assert p.delivery_text == ""

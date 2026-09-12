@@ -27,7 +27,10 @@ th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #ddd; 
 def _fmt(iso: str | None) -> str:
     if not iso:
         return "never"
-    return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M UTC")
+    try:
+        return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M UTC")
+    except (ValueError, TypeError):
+        return str(iso)
 
 
 def render_page(state: dict, history: list[dict], now: datetime) -> str:
