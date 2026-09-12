@@ -276,10 +276,14 @@ is the one event that token may raise, and raising it needs `actions: write`.
 `poll.yml` still gains `products.json` to its `push` paths, which covers a human
 editing the list by hand and pushing it.
 
-`poll.yml` stages only the files it writes. It never writes `products.json`, so
-that file is not added to its commit step; when a poll and a manage run race, the
-poll's conflict fallback resets to `origin/main` and restores only the generated
-files, which leaves the manage commit's `products.json` in place.
+`poll.yml`'s loop is also reordered: each iteration resets to `origin/main` before
+polling rather than reconciling afterwards. The product list is then always the
+committed one, so a product removed a moment ago is not polled and a product added
+a moment ago is. Every file the loop writes is regenerated from scratch, so there
+is nothing local to preserve across the reset and the old rebase-and-repair block
+is gone. A rejected push needs no repair either: the next iteration resets and
+polls again, and an alert that was not pushed is re-detected from the state that
+actually landed.
 
 ## Repository setup
 

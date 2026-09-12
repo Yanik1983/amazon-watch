@@ -56,24 +56,25 @@ jobs:
           while [ "$(date +%s)" -lt "$end" ]; do
             n=$((n + 1))
             echo "::group::poll #$n $(date -u +'%Y-%m-%d %H:%M UTC')"
+            # Start every poll from the current main. The manage workflow may have
+            # added or removed a product since the last one, and every file this
+            # loop writes is regenerated from scratch, so nothing local is worth
+            # keeping. Syncing first is also what makes the product list authoritative:
+            # polling a stale checkout would watch a product that was just removed.
+            if git fetch -q origin main; then
+              git reset -q --hard origin/main
+            else
+              echo "fetch failed; polling the checkout as it stands"
+            fi
             python -m watch.main || echo "poll exited non-zero"
             git add --all -- state.json history.json docs/index.html || true
             if git diff --cached --quiet; then
               echo "no changes"
             else
               git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
-            fi
-            git fetch -q origin main || true
-            if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
-              # Generated files always win over whatever landed upstream meanwhile.
-              local_head=$(git rev-parse HEAD)
-              if ! git pull -q --rebase -X theirs origin main; then
-                git rebase --abort || true
-                git reset -q --hard origin/main
-                git checkout "$local_head" -- state.json history.json docs/index.html
-                git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]" || true
-              fi
-              git push -q origin HEAD:main || echo "push failed; will retry next iteration"
+              # A rejected push needs no repair: the next iteration resets to main
+              # and polls again, and an unsent alert is re-detected from that state.
+              git push -q origin HEAD:main || echo "push rejected; the next poll retries"
             fi
             echo "::endgroup::"
             remaining=$(( end - $(date +%s) ))
