@@ -316,10 +316,14 @@ def render_page(state: dict, history: list[dict], product_list: list[dict],
     if last_checked is not None:
         nxt = last_checked + timedelta(seconds=config.POLL_INTERVAL_SECONDS)
         next_line = f"Next automatic check: about {_local(nxt)}<br>"
+    # Deliberately nothing here derived from "now": the page is a pure function of
+    # the stored data, so re-rendering it when nothing has changed produces
+    # identical bytes and commits nothing. That is what lets every tick render,
+    # which in turn means a change to the page itself appears within a minute
+    # instead of waiting for the next hourly poll.
     parts.append(
         f'<p class="meta">Last checked: {_fmt(state.get("last_checked"))}<br>'
-        f'{next_line}'
-        f'Page rendered: {_fmt(now.isoformat())}</p>'
+        f'{next_line}</p>'
     )
     parts.append(
         f'<a class="check" href="{escape(config.WORKFLOW_URL)}">Check now</a>'

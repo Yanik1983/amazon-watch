@@ -433,3 +433,34 @@ def test_poll_due_with_no_products_uses_the_full_interval():
     from watch.main import poll_due
     st = {"last_checked": NOW.isoformat(), "products": {}}
     assert poll_due(st, NOW + timedelta(seconds=config.RETRY_INTERVAL_SECONDS)) is False
+
+
+def test_a_tick_without_a_poll_still_renders_the_page(tmp_path):
+    """A page change must appear within a minute, not at the next hourly poll."""
+    from watch.main import tick
+    n = FakeNotifier()
+    p = tick_paths(tmp_path)
+    hp = tmp_path / "history.json"
+    page = tmp_path / "docs" / "index.html"
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW,
+         get=no_mailbox, history_path=hp, **p)
+    page.unlink()
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n,
+         now=NOW + timedelta(minutes=5), get=no_mailbox, history_path=hp, **p)
+    assert page.exists()
+    assert "DI ORO" in page.read_text(encoding="utf-8")
+
+
+def test_an_unchanged_tick_rewrites_the_page_byte_for_byte(tmp_path):
+    """Otherwise every tick would commit and push a change."""
+    from watch.main import tick
+    n = FakeNotifier()
+    p = tick_paths(tmp_path)
+    hp = tmp_path / "history.json"
+    page = tmp_path / "docs" / "index.html"
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW,
+         get=no_mailbox, history_path=hp, **p)
+    before = page.read_text(encoding="utf-8")
+    tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n,
+         now=NOW + timedelta(minutes=7), get=no_mailbox, history_path=hp, **p)
+    assert page.read_text(encoding="utf-8") == before

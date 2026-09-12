@@ -165,10 +165,18 @@ ticks every `TICK_SECONDS` (60):
 ```
 loop:
   sync to origin/main
-  python -m watch.tick        # applies commands; polls Amazon if due
+  python -m watch.tick        # applies commands; polls Amazon if due; renders
   commit and push if anything changed
   sleep TICK_SECONDS
 ```
+
+Every tick re-renders the page, whether or not Amazon was polled. That is only
+safe because the page is a pure function of the stored data: nothing on it is
+derived from the render time, so an unchanged watcher produces identical bytes and
+the commit step sees nothing to commit. The benefit is that a change to the page
+itself reaches the site within a minute of being deployed rather than waiting for
+the next hourly poll. The old "Page rendered" line was the one thing that broke
+this property, and it only duplicated "Last checked", so it is gone.
 
 "If due" means `INTERVAL_SECONDS` has passed since `last_checked`, which is read
 from the state file, so the hourly Amazon cadence survives a job restart. The one

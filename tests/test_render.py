@@ -226,3 +226,11 @@ def test_the_asin_is_shown_even_without_a_reading():
     """A product added a moment ago has no data yet but still needs its identity."""
     page = render_page(state_mod.default_state(), [], [entry(OTHER, "Kettle")], NOW)
     assert f'<p class="asin">{OTHER}</p>' in page
+
+
+def test_the_page_does_not_depend_on_the_render_time():
+    """Every tick re-renders, so an unchanged page must produce identical bytes."""
+    from datetime import timedelta
+    st, hist, prods = base_state(), [], [entry()]
+    assert render_page(st, hist, prods, NOW) == render_page(
+        st, hist, prods, NOW + timedelta(hours=5))
