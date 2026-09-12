@@ -1,0 +1,80 @@
+name: poll
+
+# One long-running job polls every hour for ~5h50m. A new job starts every
+# 3 hours (or on a code push) and cancels the previous one, so polling is
+# continuous even when GitHub delays scheduled runs.
+on:
+  schedule:
+    - cron: "13 */3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "watch/**"
+      - "requirements.txt"
+      - ".github/workflows/poll.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: poll
+  cancel-in-progress: true
+
+env:
+  LOOP_MINUTES: 350
+  INTERVAL_SECONDS: 3600
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Poll loop
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_EMAIL: ${{ secrets.NTFY_EMAIL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_SERVER: ${{ vars.NTFY_SERVER }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          end=$(( $(date +%s) + LOOP_MINUTES * 60 ))
+          n=0
+          while [ "$(date +%s)" -lt "$end" ]; do
+            n=$((n + 1))
+            echo "::group::poll #$n $(date -u +'%Y-%m-%d %H:%M UTC')"
+            python -m watch.main || echo "poll exited non-zero"
+            git add --all -- state.json history.json docs/index.html || true
+            if git diff --cached --quiet; then
+              echo "no changes"
+            else
+              git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+            fi
+            git fetch -q origin main
+            if [ "$(git rev-list --count origin/main..HEAD)" -gt 0 ]; then
+              # Generated files always win over whatever landed upstream meanwhile.
+              local_head=$(git rev-parse HEAD)
+              if ! git pull -q --rebase -X theirs origin main; then
+                git rebase --abort || true
+                git reset -q --hard origin/main
+                git checkout "$local_head" -- state.json history.json docs/index.html
+                git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+              fi
+              git push -q origin HEAD:main || echo "push failed; will retry next iteration"
+            fi
+            echo "::endgroup::"
+            remaining=$(( end - $(date +%s) ))
+            [ "$remaining" -le "$INTERVAL_SECONDS" ] && break
+            sleep "$INTERVAL_SECONDS"
+          done
+          echo "loop finished after $n poll(s)"
