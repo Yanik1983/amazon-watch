@@ -272,9 +272,10 @@ the manage commit cancels the sleeping poll job and starts a fresh one, which
 polls immediately. Adding a product therefore shows its state on the page about
 a minute later, with no second button to press.
 
-`poll.yml` also gains `products.json` to the paths it stages before committing,
-for the case where a poll and a manage run race; the file is not written by the
-poll, so this only ever stages nothing.
+`poll.yml` stages only the files it writes. It never writes `products.json`, so
+that file is not added to its commit step; when a poll and a manage run race, the
+poll's conflict fallback resets to `origin/main` and restores only the generated
+files, which leaves the manage commit's `products.json` in place.
 
 ## Repository setup
 
