@@ -73,7 +73,7 @@ def render_page(state: dict, history: list[dict], now: datetime) -> str:
     else:
         cls, badge = "unknown", "No data yet"
 
-    title = escape(product.get("title") or f"ASIN {config.ASIN}")
+    title = escape(product.get("title") or f"ASIN {config.DEFAULT_ASIN}")
     delivery = escape(product.get("delivery_text") or "")
     merchant = escape(product.get("merchant") or "")
 
@@ -83,7 +83,7 @@ def render_page(state: dict, history: list[dict], now: datetime) -> str:
         '<meta http-equiv="refresh" content="600">',
         "<title>Amazon free-shipping watch</title>",
         f"<style>{STYLE}</style></head><body>",
-        f'<h1><a href="{escape(config.PRODUCT_URL)}">{title}</a></h1>',
+        f'<h1><a href="{escape(config.product_url(config.DEFAULT_ASIN))}">{title}</a></h1>',
         f'<div class="badge {cls}">{badge}</div>',
     ]
     if delivery:

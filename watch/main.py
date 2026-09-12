@@ -45,7 +45,7 @@ def run(
     history = history_mod.load(history_path)
 
     try:
-        product: Product = parse(fetch(config.ASIN))
+        product: Product = parse(fetch(config.DEFAULT_ASIN))
     except (FetchError, ParseError) as e:
         st["fail_count"] = int(st.get("fail_count", 0)) + 1
         st["last_error"] = str(e)
@@ -92,7 +92,7 @@ def run(
         notifier(
             "Amazon: free shipping to Israel!",
             f"{product.title}\n{product.delivery_text}",
-            click=config.PRODUCT_URL,
+            click=config.product_url(config.DEFAULT_ASIN),
             priority="high",
         )
         log.info("notified: free shipping available")

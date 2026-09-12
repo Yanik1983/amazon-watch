@@ -50,7 +50,7 @@ def _check_page(resp, step: str) -> str:
     return text
 
 
-def fetch_product(asin: str = config.ASIN, session=None, country: str = config.COUNTRY) -> str:
+def fetch_product(asin: str = config.DEFAULT_ASIN, session=None, country: str = config.COUNTRY) -> str:
     """Return the product page HTML rendered for a shopper in `country`."""
     s = session or new_session()
     url = f"{config.BASE_URL}/dp/{asin}"

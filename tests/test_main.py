@@ -61,7 +61,7 @@ def test_paid_to_free_pushes_once(tmp_path):
     assert len(n.sent) == 1
     msg = n.sent[0]
     assert msg["title"] == "Amazon: free shipping to Israel!"
-    assert msg["click"] == config.PRODUCT_URL
+    assert msg["click"] == config.product_url(config.DEFAULT_ASIN)
     assert msg["priority"] == "high"
     assert "FREE" in msg["body"]
     # stays free: no second push
@@ -86,7 +86,7 @@ def test_first_poll_pushes_when_already_free(tmp_path):
     st = run(fetch=fetch_returning(FREE), notifier=n, now=NOW, **paths(tmp_path))
     assert len(n.sent) == 1
     assert n.sent[0]["title"] == "Amazon: free shipping to Israel!"
-    assert n.sent[0]["click"] == config.PRODUCT_URL
+    assert n.sent[0]["click"] == config.product_url(config.DEFAULT_ASIN)
     assert n.sent[0]["priority"] == "high"
     assert st["product"]["free"] is True
 
