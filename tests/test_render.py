@@ -95,9 +95,8 @@ def test_check_now_button_links_to_the_workflow():
     assert 'href="https://github.com/Yanik1983/amazon-watch/actions/workflows/poll.yml"' in page
 
 
-def test_manage_button_links_to_the_manage_workflow():
+def test_the_manage_workflow_is_linked_as_a_fallback():
     page = render_page(base_state(), [], [entry()], NOW)
-    assert "Manage products" in page
     assert f'href="{config.MANAGE_WORKFLOW_URL}"' in page
     assert "choose add or remove" in page
 
@@ -170,5 +169,47 @@ def test_an_empty_product_list_still_renders_the_buttons():
     page = render_page(state_mod.default_state(), [], [], NOW)
     assert "No products are being watched." in page
     assert "Check now" in page
-    assert "Manage products" in page
+    assert 'id="cmd-form"' in page          # the form works with an empty list too
     assert '<div class="card">' not in page
+
+
+# --- the add/remove form ---------------------------------------------------
+
+
+def page_with_form():
+    return render_page(base_state(), [], [entry()], NOW)
+
+
+def test_the_form_is_present():
+    page = page_with_form()
+    assert 'id="cmd-form"' in page
+    assert 'id="cmd-product"' in page
+    assert 'id="cmd-phrase"' in page
+    assert 'value="add"' in page and 'value="remove"' in page
+
+
+def test_the_page_carries_no_secret():
+    """The page is public, so it must hold neither a credential nor the mailbox address."""
+    from watch import commands
+    page = page_with_form()
+    assert "amzcmd-" not in page.replace('"amzcmd-" + ', "")  # only the derivation, no address
+    assert commands.topic_for("basil-ember-kettle-amber-89") not in page
+    assert "ghp_" not in page and "github_pat_" not in page
+    assert "token" not in page.lower()
+
+
+def test_the_form_talks_only_to_ntfy():
+    page = page_with_form()
+    assert config.NTFY_SERVER in page
+    assert "api.github.com" not in page
+
+
+def test_the_manage_workflow_stays_as_a_fallback():
+    page = page_with_form()
+    assert "Lost the passphrase?" in page
+    assert config.MANAGE_WORKFLOW_URL in page
+
+
+def test_the_script_uses_the_same_command_version_as_the_watcher():
+    from watch import commands
+    assert f"VERSION = {commands.COMMAND_VERSION}" in page_with_form()

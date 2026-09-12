@@ -31,20 +31,40 @@ state of every watched product and every change observed so far.
    `history.json`.
 5. `docs/index.html` is re-rendered on every poll and served by GitHub Pages. It shows
    one card per product, free ones first, when the next automatic check is due, a
-   "Check now" button and a "Manage products" button. Timestamps are Jerusalem local
-   time with UTC beside them.
+   "Check now" button and the add/remove form. Timestamps are Jerusalem local time
+   with UTC beside them.
 6. If three polls in a row fail for a product (captcha, network, layout change), a
    warning push is sent for it and repeated once a day while the failures continue.
    When every watched product fails at once — a captcha or a network problem rather
    than a product problem — one combined warning is sent instead of one per product.
 
-The GitHub Actions job is one long loop (poll, commit, sleep 60 minutes) that runs for
-about 5 h 50 m. A fresh job starts every 3 hours and on every code push, cancelling the
-previous one.
+The GitHub Actions job is one long loop that ticks every minute for about 5 h 50 m.
+A tick reads the command mailbox and asks Amazon only when an hour has passed since
+the last poll, so the page's Add button answers quickly without Amazon being polled
+any more often than before. A fresh job starts every 3 hours and on every code push,
+cancelling the previous one.
 
 ## Adding and removing products
 
-Actions > **manage** > Run workflow:
+**From the status page.** There is a form at the bottom: choose add or remove,
+paste an ASIN or an Amazon link, optionally name it, press Send. The first time on
+each device you also type the passphrase; the browser remembers it after that.
+The watcher picks the command up within about a minute and the page says what
+happened.
+
+The page is public and holds no credential. It asks for a passphrase, and from it
+derives both the address of a private ntfy topic and an HMAC signature for each
+command. The passphrase itself is never sent, so reading the topic reveals
+nothing, and a command cannot be forged without it. The watcher checks that
+mailbox once a minute while it waits for its next hourly Amazon poll; anything it
+cannot verify is ignored. See
+`docs/superpowers/specs/2026-09-12-amazon-watch-page-commands-design.md`.
+
+The passphrase lives in the repository secret `CMD_PASSPHRASE`. Unset it and the
+form stops working, with no other effect.
+
+**From GitHub**, as a fallback if the passphrase is lost — Actions > **manage** >
+Run workflow:
 
 - **action**: `add` or `remove`
 - **product**: an ASIN (`B07W1P15GL`) or any Amazon product link (`.../dp/B07W1P15GL...`)
@@ -69,6 +89,8 @@ name is the only secret protecting it; treat it as a password.
    - `NTFY_TOPIC`: the topic name (required)
    - `NTFY_EMAIL`: address for an email copy (optional)
    - `NTFY_TOKEN`: ntfy.sh access token, needed only for the email copy (optional)
+   - `CMD_PASSPHRASE`: the passphrase the status page's form signs with (optional;
+     without it the form is inert and only the `manage` workflow can change the list)
 3. GitHub Pages: source `main`, folder `/docs`.
 4. Run the `poll` workflow manually once (Actions > poll > Run workflow) or push a change.
 
@@ -76,7 +98,7 @@ name is the only secret protecting it; treat it as a password.
 
 | File | Written by | Holds |
 |---|---|---|
-| `products.json` | `manage` only | what is watched: ASIN, label, when it was added |
+| `products.json` | `manage` and page commands | what is watched: ASIN, label, when it was added |
 | `state.json` | the poll | the last reading and failure count per product |
 | `history.json` | the poll | every eligibility change, per product, never pruned |
 | `docs/index.html` | the poll | the rendered status page |

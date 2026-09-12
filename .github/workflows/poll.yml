@@ -1,8 +1,11 @@
 name: poll
 
-# One long-running job polls every hour for ~5h50m. A new job starts every
-# 3 hours (or on a code push) and cancels the previous one, so polling is
-# continuous even when GitHub delays scheduled runs.
+# One long-running job ticks every minute for ~5h50m. A tick reads the status
+# page's command mailbox; it polls Amazon only once an hour, which is what makes
+# the page's Add button respond in about a minute without asking Amazon more
+# often. A new job starts every 3 hours (or on a code push) and cancels the
+# previous one, so the watcher is running continuously even when GitHub delays
+# scheduled runs.
 on:
   schedule:
     - cron: "13 */3 * * *"
@@ -26,7 +29,8 @@ concurrency:
 
 env:
   LOOP_MINUTES: 350
-  INTERVAL_SECONDS: 3600
+  INTERVAL_SECONDS: 3600   # how often Amazon is asked
+  TICK_SECONDS: 60         # how often the command mailbox is read
 
 jobs:
   poll:
@@ -42,12 +46,13 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Poll loop
+      - name: Watch loop
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NTFY_EMAIL: ${{ secrets.NTFY_EMAIL }}
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           NTFY_SERVER: ${{ vars.NTFY_SERVER }}
+          CMD_PASSPHRASE: ${{ secrets.CMD_PASSPHRASE }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -55,30 +60,29 @@ jobs:
           n=0
           while [ "$(date +%s)" -lt "$end" ]; do
             n=$((n + 1))
-            echo "::group::poll #$n $(date -u +'%Y-%m-%d %H:%M UTC')"
-            # Start every poll from the current main. The manage workflow may have
-            # added or removed a product since the last one, and every file this
-            # loop writes is regenerated from scratch, so nothing local is worth
-            # keeping. Syncing first is also what makes the product list authoritative:
-            # polling a stale checkout would watch a product that was just removed.
+            # Start every tick from the current main. Everything this loop writes
+            # is regenerated from scratch, so nothing local is worth keeping, and
+            # syncing first is what makes the committed product list authoritative:
+            # acting on a stale checkout would watch a product just removed.
             if git fetch -q origin main; then
               git reset -q --hard origin/main
             else
-              echo "fetch failed; polling the checkout as it stands"
+              echo "tick $n: fetch failed; working from the checkout as it stands"
             fi
-            python -m watch.main || echo "poll exited non-zero"
-            git add --all -- state.json history.json docs/index.html || true
+            # Reads the command mailbox; polls Amazon only when the hour is up.
+            python -m watch.tick || echo "tick $n exited non-zero"
+            git add --all -- state.json history.json products.json docs/index.html || true
             if git diff --cached --quiet; then
-              echo "no changes"
+              :
             else
-              git commit -q -m "chore: poll $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
-              # A rejected push needs no repair: the next iteration resets to main
-              # and polls again, and an unsent alert is re-detected from that state.
-              git push -q origin HEAD:main || echo "push rejected; the next poll retries"
+              echo "tick #$n $(date -u +'%Y-%m-%d %H:%M UTC'): committing"
+              git commit -q -m "chore: watch $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+              # A rejected push needs no repair: the next tick resets to main and
+              # acts again, and an unsent alert is re-detected from that state.
+              git push -q origin HEAD:main || echo "push rejected; the next tick retries"
             fi
-            echo "::endgroup::"
             remaining=$(( end - $(date +%s) ))
-            [ "$remaining" -le "$INTERVAL_SECONDS" ] && break
-            sleep "$INTERVAL_SECONDS"
+            [ "$remaining" -le "$TICK_SECONDS" ] && break
+            sleep "$TICK_SECONDS"
           done
-          echo "loop finished after $n poll(s)"
+          echo "loop finished after $n tick(s)"
