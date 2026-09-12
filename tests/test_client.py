@@ -26,7 +26,7 @@ class FakeSession:
         return self.responses.pop(0)
 
 
-def page(glow="Israel", token="tok123", size=client.MIN_PAGE_BYTES):
+def page(glow="Israel", token="tok123", size=client.MIN_PAGE_CHARS):
     head = (
         '<html><input name="anti-csrftoken-a2z" value="%s">'
         '<span id="glow-ingress-line2" class="nav-line-2">%s</span>' % (token, glow)
@@ -79,7 +79,7 @@ def test_small_body_raises():
 
 
 def test_missing_token_raises():
-    body = "<html>" + "x" * client.MIN_PAGE_BYTES + "</html>"
+    body = "<html>" + "x" * client.MIN_PAGE_CHARS + "</html>"
     s = FakeSession([R(body)])
     with pytest.raises(FetchError, match="token"):
         fetch_product(session=s)
@@ -101,3 +101,21 @@ def test_glow_not_israel_raises():
     s = FakeSession([R(page()), ADDRESS_OK, R(page(glow="United States"))])
     with pytest.raises(FetchError, match="Israel"):
         fetch_product(session=s)
+
+
+def test_address_updated_ten_is_not_success():
+    s = FakeSession([R(page()), R('{"isAddressUpdated":10}')])
+    with pytest.raises(FetchError, match="address-change: not updated"):
+        fetch_product(session=s)
+
+
+def test_address_updated_with_spaces_is_success():
+    second = page() + "<!-- second -->"
+    s = FakeSession([R(page()), R('{ "isAddressUpdated" : 1, "successful": 1 }'), R(second)])
+    assert fetch_product(session=s) == second
+
+
+def test_every_request_uses_the_shared_timeout():
+    s = FakeSession([R(page()), ADDRESS_OK, R(page())])
+    fetch_product(session=s)
+    assert [kw["timeout"] for _, _, kw in s.calls] == [client.TIMEOUT] * 3

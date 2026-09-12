@@ -1,11 +1,9 @@
 """Persist watcher state between polls as JSON."""
 from __future__ import annotations
 
-import json
-import logging
 from pathlib import Path
 
-log = logging.getLogger(__name__)
+from watch.jsonio import read_json, write_json
 
 
 def default_state() -> dict:
@@ -19,14 +17,7 @@ def default_state() -> dict:
 
 
 def load(path: str | Path) -> dict:
-    p = Path(path)
-    if not p.exists():
-        return default_state()
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as e:
-        log.warning("state file unreadable (%s); starting fresh", e)
-        return default_state()
+    data = read_json(path, None, "state")
     base = default_state()
     if isinstance(data, dict):
         base.update(data)
@@ -34,6 +25,4 @@ def load(path: str | Path) -> dict:
 
 
 def save(path: str | Path, state: dict) -> None:
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_json(path, state, sort_keys=True)

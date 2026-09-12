@@ -71,25 +71,31 @@ def run(
     prev_free = previous.get("free") if previous else None
 
     history_changed = False
+    announce = False
     if prev_free is None:
+        # Nothing recorded before: either the first ever poll, or state.json was lost.
+        # Free right now is news in both cases, so it is announced.
         history_mod.append_flip(history, now, product.free, product.delivery_text)
         history_changed = True
+        announce = product.free
         log.info("first observation: free=%s (%s)", product.free, product.delivery_text)
     elif product.free != prev_free:
         history_mod.append_flip(history, now, product.free, product.delivery_text)
         history_changed = True
-        if product.free:
-            notifier(
-                "Amazon: free shipping to Israel!",
-                f"{product.title}\n{product.delivery_text}",
-                click=config.PRODUCT_URL,
-                priority="high",
-            )
-            log.info("notified: became free")
-        else:
+        announce = product.free
+        if not product.free:
             log.info("became paid again (%s); no push", product.delivery_text)
     else:
         log.info("unchanged: free=%s (%s)", product.free, product.delivery_text)
+
+    if announce:
+        notifier(
+            "Amazon: free shipping to Israel!",
+            f"{product.title}\n{product.delivery_text}",
+            click=config.PRODUCT_URL,
+            priority="high",
+        )
+        log.info("notified: free shipping available")
 
     st["product"] = {**asdict(product), "checked_at": now.isoformat()}
     return _finish(st, history, history_changed, state_path, history_path, page_path, now)

@@ -132,3 +132,38 @@ def test_only_fastest_falls_back_to_text():
     p = parse(html)
     assert p.free is True
     assert p.delivery_text == ""
+
+
+def test_title_with_nested_span_not_truncated():
+    html = (
+        '<span id="productTitle"> DI ORO <span class="a-color-secondary">Silicone</span>'
+        " Ladle </span>"
+        '<div id="mir-layout-DELIVERY_BLOCK"><span data-csa-c-delivery-price="ILS 58.91"></span></div>'
+    )
+    assert parse(html).title == "DI ORO Silicone Ladle"
+
+
+def test_merchant_with_nested_div_not_truncated():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK"><span data-csa-c-delivery-price="ILS 58.91"></span></div>'
+        '<div id="merchantInfo">Sold by <div class="x">DI ORO</div> and shipped by Amazon</div>'
+    )
+    assert parse(html).merchant == "Sold by DI ORO and shipped by Amazon"
+
+
+def test_seller_link_used_when_merchant_info_absent():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK"><span data-csa-c-delivery-price="ILS 58.91"></span></div>'
+        '<a id="sellerProfileTriggerId" href="/shops/x">DI ORO  Store</a>'
+    )
+    assert parse(html).merchant == "DI ORO Store"
+
+
+def test_unclosed_element_yields_empty_string_not_rest_of_page():
+    html = (
+        '<span id="productTitle">never closed'
+        '<div id="mir-layout-DELIVERY_BLOCK"><span data-csa-c-delivery-price="ILS 58.91"></span></div>'
+    )
+    p = parse(html)
+    assert p.title == ""
+    assert p.delivery_text == "ILS 58.91"

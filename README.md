@@ -13,13 +13,19 @@ state and every change observed so far.
 1. `watch/client.py` fetches the product page with `curl_cffi` impersonating Chrome
    (plain HTTP clients get a captcha page), sets the ship-to country to Israel through
    Amazon's address-change endpoint, and fetches the page again.
-2. `watch/parser.py` reads the delivery block. The first `data-csa-c-delivery-price`
-   attribute is `FREE` when the product is eligible, otherwise a price such as `ILS 58.91`.
-3. `watch/main.py` compares the result with `state.json`. When the product goes from paid
-   to free it sends one ntfy push (high priority) with a link to the product. The reverse
-   change is recorded but does not push. Every change is appended to `history.json`.
+2. `watch/parser.py` reads the delivery block. Inside it, the first
+   `data-csa-c-delivery-price` attribute that is not the "fastest" express option holds the
+   delivery price: `FREE` (or a zero amount) when the product is eligible, otherwise a price
+   such as `ILS 58.91`. Amazon shows that price in the caller's own currency, so the same
+   product reads `ILS 58.91` from a home connection and `$19.28` from a GitHub runner. Only
+   the free values decide eligibility, so the currency does not matter.
+3. `watch/main.py` compares the result with `state.json`. It sends one ntfy push (high
+   priority, linking to the product) whenever the product becomes free, and also when the
+   first observation already finds it free, which covers a lost `state.json`. Going back to
+   paid is recorded but does not push. Every change is appended to `history.json`.
 4. `docs/index.html` is re-rendered on every poll and served by GitHub Pages.
-5. If three polls in a row fail (captcha, network, layout change), one warning push is sent.
+5. If three polls in a row fail (captcha, network, layout change), a warning push is sent,
+   and repeated once a day for as long as the failures continue.
 
 The GitHub Actions job is one long loop (poll, commit, sleep 60 minutes) that runs for
 about 5 h 50 m. A fresh job starts every 3 hours and on every code push, cancelling the

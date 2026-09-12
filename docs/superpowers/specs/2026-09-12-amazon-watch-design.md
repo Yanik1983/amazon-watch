@@ -67,11 +67,14 @@ ship-to country set to Israel. Steps: create a `curl_cffi` session impersonating
 `Accept-Language: en-US,en;q=0.9`; GET the page; extract the token; POST the address change;
 GET the page again; return the body.
 
-Raises `FetchError` when: any response is not HTTP 200; a page body is shorter than 20,000
-bytes; a body contains "captcha" (case-insensitive) within its first 5,000 bytes; the token
-regex does not match; the address-change JSON lacks `"isAddressUpdated":1`; or the final page
-does not contain "Israel" in the glow ingress line. Every failure message names the step that
-failed.
+Raises `FetchError` when: any response is not HTTP 200; a page body is shorter than
+`MIN_PAGE_CHARS` (20,000 characters, against a real page of about 2.7 million and a captcha
+page under 4,000); a body contains "captcha" (case-insensitive) within its first
+`CAPTCHA_SCAN_CHARS` (5,000) characters; the token regex does not match; the address-change
+response does not match `"isAddressUpdated"\s*:\s*1(?!\d)`, a pattern that a value such as
+10 cannot satisfy; or the final page does not contain "Israel" in the glow ingress line. Every
+failure message names the step that failed. All three requests share the `TIMEOUT` constant
+(30 seconds).
 
 The session is injectable so tests use a fake with canned responses. No network in tests.
 
@@ -80,7 +83,10 @@ The session is injectable so tests use a fake with canned responses. No network 
 `parse(html: str) -> Product` where `Product` is a frozen dataclass:
 `title: str`, `free: bool`, `delivery_text: str`, `merchant: str`.
 
-- `title`: text of `#productTitle`, whitespace collapsed; empty string if missing.
+- `title`: text of `#productTitle`, whitespace collapsed; empty string if missing. The
+  element's text is read with a nesting-aware scan (`_element_text`) rather than a lazy
+  regex, so nested spans do not truncate it; an element that does not close within
+  `ELEMENT_WINDOW` characters yields an empty string.
 - `delivery_text`: value of the first `data-csa-c-delivery-price` attribute, HTML-unescaped, that
   is not `fastest` (case-insensitive; `fastest` spans describe the paid express option and are
   skipped). The search is scoped to `html[anchor:anchor + DELIVERY_BLOCK_WINDOW]` when the
@@ -88,16 +94,24 @@ The session is injectable so tests use a fake with canned responses. No network 
 - `free`: the normalised value, upper-cased, is one of `FREE`, `$0.00`, `0.00`, `ILS 0.00`. If
   every `data-csa-c-delivery-price` match is `fastest` (or the attribute is missing), the
   delivery block text is checked instead for "FREE international delivery".
-- `merchant`: text of `#merchantInfo` (or `#sellerProfileTriggerId`), whitespace collapsed;
-  empty string if missing. Informational only, shown on the page.
+- `merchant`: text of `#merchantInfo` (or `#sellerProfileTriggerId`), read with the same
+  nesting-aware scan, whitespace collapsed; empty string if missing. Informational only,
+  shown on the page. The real page for the watched ASIN carries neither element.
 
 Raises `ParseError` when neither the `data-csa-c-delivery-price` attribute nor the
 `mir-layout-DELIVERY_BLOCK` container is present. Parsing uses regular expressions on the
 raw HTML, no HTML parser dependency.
 
+### `jsonio.py`
+
+`read_json(path, default, what)` returns the parsed file or `default`, logging a warning
+naming `what` when the file is missing or unreadable. `write_json(path, data, sort_keys=False)`
+writes to a sibling temporary file and renames it over the target with `os.replace`, so a poll
+cancelled mid-write never leaves a half-written file. `state.py` and `history.py` both use it.
+
 ### `state.py`
 
-Copied from the Aliathon watcher. Default state:
+Default state:
 
 ```json
 {
@@ -113,16 +127,23 @@ Copied from the Aliathon watcher. Default state:
 
 ### `history.py`
 
-`load(path) -> list[dict]`, `save(path, entries)`, `append_flip(entries, when, free, delivery_text)`.
+`load(path) -> list[dict]`, `save(path, entries)`, `append_flip(entries, when, free, delivery_text)`,
+all built on `jsonio`.
 Each entry: `{"at": ISO UTC, "free": bool, "delivery_text": str}`. The first successful poll
 appends the initial observation so the page has a starting row.
 
 ### `notify.py`
 
-Copied from the Aliathon watcher. `send(title, body, click=None, priority="high", tags=...)`
-posts to `NTFY_SERVER/NTFY_TOPIC`, adds `Authorization` when `NTFY_TOKEN` is set, adds
-`Email` when `NTFY_EMAIL` is set and retries once without it on failure. Returns `True` on
-HTTP 200. Default tags `package,tada`.
+`send(title, body, click=None, priority="high", tags=...)` posts to `NTFY_SERVER/NTFY_TOPIC`,
+adds `Authorization` when `NTFY_TOKEN` is set, adds `Email` when `NTFY_EMAIL` is set. Returns
+`True` on HTTP 200. Default tags `package,tada`.
+
+Header values are folded to ASCII first (`unicodedata.normalize` then `encode("ascii",
+"replace")`), because HTTP headers cannot carry a Hebrew or typographic character that a
+product title may contain; the body is sent as UTF-8 bytes and keeps the original text. When
+the server answers with a non-200 and an `Email` header was sent, the message is retried once
+without that header, since ntfy.sh rejects anonymous email relay with HTTP 400. A transport
+failure, where no answer arrives at all, is not retried; the next poll tries again.
 
 ### `render.py`
 
@@ -145,7 +166,8 @@ content="600">`. Inline CSS, readable on a phone.
    `FAIL_REWARN_EVERY` (24) polls. Keep the previous `product`. Go to step 6.
 4. On success: reset `fail_count` to 0, clear `last_error`, set `last_success`. Compare
    `product.free` with the previous `product["free"]`:
-   - no previous product: append the initial history entry, no push;
+   - no previous product (first ever poll, or a lost `state.json`): append the initial
+     history entry, and push if the product is already free;
    - previous `False`, now `True`: append a history entry and push "Amazon: free shipping to
      Israel!" with body `<title>` newline `<delivery_text>`, click URL = product URL,
      priority `high`;

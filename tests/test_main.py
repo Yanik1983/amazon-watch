@@ -74,10 +74,30 @@ def test_free_to_paid_records_history_without_push(tmp_path):
     n = FakeNotifier()
     p = paths(tmp_path)
     run(fetch=fetch_returning(FREE), notifier=n, now=NOW, **p)
+    assert len(n.sent) == 1  # already free on the first observation: announced once
     run(fetch=fetch_returning(NOT_FREE), notifier=n, now=NOW + timedelta(hours=1), **p)
-    assert n.sent == []
+    assert len(n.sent) == 1  # falling back to paid adds no push
     hist = json.loads((tmp_path / "history.json").read_text(encoding="utf-8"))
     assert [e["free"] for e in hist] == [True, False]
+
+
+def test_first_poll_pushes_when_already_free(tmp_path):
+    n = FakeNotifier()
+    st = run(fetch=fetch_returning(FREE), notifier=n, now=NOW, **paths(tmp_path))
+    assert len(n.sent) == 1
+    assert n.sent[0]["title"] == "Amazon: free shipping to Israel!"
+    assert n.sent[0]["click"] == config.PRODUCT_URL
+    assert n.sent[0]["priority"] == "high"
+    assert st["product"]["free"] is True
+
+
+def test_lost_state_file_re_announces_free(tmp_path):
+    n = FakeNotifier()
+    p = paths(tmp_path)
+    run(fetch=fetch_returning(FREE), notifier=n, now=NOW, **p)
+    Path(p["state_path"]).unlink()
+    run(fetch=fetch_returning(FREE), notifier=n, now=NOW + timedelta(hours=1), **p)
+    assert len(n.sent) == 2
 
 
 def test_unchanged_state_adds_no_history(tmp_path):

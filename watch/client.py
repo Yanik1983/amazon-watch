@@ -17,10 +17,13 @@ TOKEN_RE = re.compile(
     r'anti-csrftoken-a2z(?:"|&quot;)\s*(?::|value=)\s*(?:"|&quot;)([^"&]+)'
 )
 GLOW_RE = re.compile(r'id="glow-ingress-line2"[^>]*>\s*([^<]*)<', re.S)
+# The flag is a boolean 0/1; the trailing guard stops a value such as 10 matching.
+ADDRESS_UPDATED_RE = re.compile(r'"isAddressUpdated"\s*:\s*1(?!\d)')
 
-# A real product page is around 2.7 MB; a captcha page is under 5 KB.
-MIN_PAGE_BYTES = 20_000
-CAPTCHA_WINDOW = 5_000
+# A real product page is around 2.7 million characters; a captcha page is under 4,000.
+MIN_PAGE_CHARS = 20_000
+CAPTCHA_SCAN_CHARS = 5_000
+TIMEOUT = 30  # seconds allowed for each request to Amazon
 
 
 class FetchError(Exception):
@@ -40,10 +43,10 @@ def _check_page(resp, step: str) -> str:
     if resp.status_code != 200:
         raise FetchError(f"{step}: HTTP {resp.status_code}")
     text = resp.text
-    if "captcha" in text[:CAPTCHA_WINDOW].lower():
+    if "captcha" in text[:CAPTCHA_SCAN_CHARS].lower():
         raise FetchError(f"{step}: captcha page returned")
-    if len(text) < MIN_PAGE_BYTES:
-        raise FetchError(f"{step}: body too small ({len(text)} bytes)")
+    if len(text) < MIN_PAGE_CHARS:
+        raise FetchError(f"{step}: body too small ({len(text)} characters)")
     return text
 
 
@@ -52,7 +55,7 @@ def fetch_product(asin: str = config.ASIN, session=None, country: str = config.C
     s = session or new_session()
     url = f"{config.BASE_URL}/dp/{asin}"
 
-    first = _check_page(s.get(url, timeout=30), "first GET")
+    first = _check_page(s.get(url, timeout=TIMEOUT), "first GET")
     m = TOKEN_RE.search(first)
     if not m:
         raise FetchError("token: anti-csrftoken-a2z not found in page")
@@ -73,17 +76,17 @@ def fetch_product(asin: str = config.ASIN, session=None, country: str = config.C
             "Referer": url,
             "X-Requested-With": "XMLHttpRequest",
         },
-        timeout=30,
+        timeout=TIMEOUT,
     )
     if resp.status_code != 200:
         raise FetchError(f"address-change: HTTP {resp.status_code}")
-    if '"isAddressUpdated":1' not in resp.text.replace(" ", ""):
+    if not ADDRESS_UPDATED_RE.search(resp.text):
         raise FetchError(f"address-change: not updated: {resp.text[:200]}")
 
-    second = _check_page(s.get(url, timeout=30), "second GET")
+    second = _check_page(s.get(url, timeout=TIMEOUT), "second GET")
     g = GLOW_RE.search(second)
     if not g or "israel" not in g.group(1).lower():
         found = g.group(1).strip() if g else "(no glow line)"
         raise FetchError(f"glow: ship-to country is not Israel: {found}")
-    log.info("fetched %s in Israel context (%d bytes)", asin, len(second))
+    log.info("fetched %s in Israel context (%d characters)", asin, len(second))
     return second
