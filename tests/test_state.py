@@ -136,3 +136,28 @@ def test_save_replaces_previous_content_atomically(tmp_path, monkeypatch):
     state.save(p, s)
     assert seen["before"] == "first"
     assert state.load(p)["last_checked"] == "second"
+
+
+def test_poll_interval_is_the_full_hour_when_healthy():
+    from watch import config
+    from watch.state import default_state, entry, poll_interval
+    st = default_state()
+    entry(st, "B07W1P15GL")["fail_count"] = 0
+    assert poll_interval(st) == config.POLL_INTERVAL_SECONDS
+
+
+def test_poll_interval_shortens_only_when_every_product_is_failing():
+    from watch import config
+    from watch.state import default_state, entry, poll_interval
+    st = default_state()
+    entry(st, "B07W1P15GL")["fail_count"] = 2
+    entry(st, "B000000001")["fail_count"] = 0
+    assert poll_interval(st) == config.POLL_INTERVAL_SECONDS
+    st["products"]["B000000001"]["fail_count"] = 1
+    assert poll_interval(st) == config.RETRY_INTERVAL_SECONDS
+
+
+def test_poll_interval_with_no_products_is_the_full_hour():
+    from watch import config
+    from watch.state import default_state, poll_interval
+    assert poll_interval(default_state()) == config.POLL_INTERVAL_SECONDS

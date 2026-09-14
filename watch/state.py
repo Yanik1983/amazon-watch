@@ -86,3 +86,18 @@ def prune(state: dict, keep_asins) -> None:
     """Drop entries for products no longer watched, so removing one cleans up."""
     keep = set(keep_asins)
     state["products"] = {a: e for a, e in (state.get("products") or {}).items() if a in keep}
+
+
+def poll_interval(st: dict) -> int:
+    """Seconds to wait after the last poll before the next one.
+
+    The full interval while anything works. When every watched product failed
+    its last poll, which is a transient block far more often than anything
+    else, the shorter retry interval, so stale data is not served for an hour.
+    Shared by the poll's own timer and the page's "next check" line so the two
+    never disagree.
+    """
+    entries = st.get("products") or {}
+    if entries and all(int(e.get("fail_count") or 0) > 0 for e in entries.values()):
+        return min(config.POLL_INTERVAL_SECONDS, config.RETRY_INTERVAL_SECONDS)
+    return config.POLL_INTERVAL_SECONDS

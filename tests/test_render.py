@@ -234,3 +234,14 @@ def test_the_page_does_not_depend_on_the_render_time():
     st, hist, prods = base_state(), [], [entry()]
     assert render_page(st, hist, prods, NOW) == render_page(
         st, hist, prods, NOW + timedelta(hours=5))
+
+
+def test_next_check_line_uses_the_retry_interval_while_everything_fails():
+    st = base_state()
+    for e in st["products"].values():
+        e["fail_count"] = 3
+        e["last_error"] = "GET: captcha page returned"
+    page = render_page(st, [], [entry()], NOW)
+    # 10:00 UTC = 13:00 Jerusalem; the retry interval is 15 minutes, not an hour
+    assert "Next automatic check: about 2026-09-12 13:15" in page
+    assert "14:00" not in page
