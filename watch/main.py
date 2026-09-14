@@ -23,6 +23,9 @@ Notifier = Callable[..., bool]
 # start another. A new job runs on a new machine with a new address, which is
 # the one thing that helps once Amazon has decided to captcha this one.
 EXIT_RESTART = 3
+# Exit status asking the workflow to end this job and start nothing in its
+# place: the page's "Cancel poll" button. The schedule brings the watcher back.
+EXIT_STOP = 4
 
 
 def _session_fetch() -> Fetch:
@@ -234,10 +237,17 @@ def tick(
         config.CMD_PASSPHRASE if passphrase is None else passphrase,
         products_path, st, now, **kw,
     )
-    if changed:
+    # A stop is acted on by the caller and must not outlive this job: it is
+    # taken out before the state is saved and put back on the returned copy.
+    stop = bool(st.pop("stop_requested", False))
+    if changed or stop:
         # Persist the applied nonces before polling, so a poll that dies partway
         # cannot cause the same command to be applied a second time.
         state_mod.save(state_path, st)
+    if stop:
+        log.info("stop requested from the page; no poll this tick")
+        st["stop_requested"] = True
+        return st
     if changed or poll_due(st, now):
         return run(products_path=products_path, state_path=state_path, now=now, **run_kwargs)
 
@@ -278,6 +288,9 @@ def tick_main() -> int:
     except Exception:  # a bad tick must not end the loop; the next one tries again
         log.exception("unexpected error in tick")
         return 0
+    if st.get("stop_requested"):
+        log.warning("stopping this job at the page's request")
+        return EXIT_STOP
     if restart_wanted(st, now):
         log.warning("every product has failed %d polls in a row; asking for a new runner",
                     config.RESTART_AFTER_FAILS)

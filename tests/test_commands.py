@@ -268,3 +268,16 @@ def test_poll_asks_for_a_poll_without_changing_the_list(tmp_path):
     assert sent[0]["ok"] is True and sent[0]["reply"] == "n1"
     assert "poll" in sent[0]["message"].lower()
     assert st["command_nonces"] == ["n1"]
+
+
+def test_stop_asks_the_job_to_end_without_polling(tmp_path):
+    p, st = setup(tmp_path)
+    get, _ = mailbox(note(action="stop", product="", label=""))
+    post, sent = recording_post()
+    assert commands.apply_commands(PHRASE, p, st, NOW, get=get, post=post) is False
+    assert st["stop_requested"] is True
+    assert [e["asin"] for e in products.load(p)] == [DEF]
+    assert sent[0]["ok"] is True and sent[0]["reply"] == "n1"
+    assert "stop" in sent[0]["message"].lower()
+    assert st["command_nonces"] == ["n1"]
+

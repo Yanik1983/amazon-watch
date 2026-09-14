@@ -32,6 +32,10 @@ h1 a { color: inherit; }
          background: #1f6feb; color: #fff; font-weight: 700; font-size: 1.05rem;
          text-align: center; text-decoration: none; }
 .check:active { background: #174ea6; }
+.check.secondary { background: #e8eaed; color: #1a1a1a; }
+.check.secondary:active { background: #d2d5d9; }
+.row { display: flex; gap: .6rem; }
+.row .check { flex: 1; margin: .6rem 0 .3rem; text-align: center; text-decoration: none; }
 .card { background: #fff; border: 1px solid #e2e2e2; border-radius: .6rem;
         padding: .9rem 1rem; margin: 1rem 0; }
 .card h2 { font-size: 1.05rem; margin: 0 0 .4rem; }
@@ -233,6 +237,15 @@ SCRIPT = """
     setTimeout(function () { location.reload(); }, 120000);
   });
 
+  var stopBtn = document.getElementById("stop-poll");
+  var stopStatus = document.getElementById("stop-status");
+  function sayStop(text, cls) { stopStatus.textContent = text; stopStatus.className = cls || "meta"; }
+  stopBtn.addEventListener("click", async function () {
+    var reply = await send({ action: "stop" }, sayStop, stopBtn);
+    if (!reply) return;
+    sayStop("Stopped. The job ends now; the schedule starts the next one within three hours.", "ok");
+  });
+
   showPhraseState();
 })();
 </script>
@@ -361,6 +374,13 @@ def render_page(state: dict, history: list[dict], product_list: list[dict],
         '<p id="check-status" class="meta"></p>'
         '<p class="meta">Asks Amazon now instead of waiting for the next automatic check. '
         'Needs the passphrase from the form below the first time.</p>'
+        '<div class="row">'
+        f'<a class="check secondary" href="{escape(config.WORKFLOW_URL)}">Go to GitHub</a>'
+        '<button type="button" class="check secondary" id="stop-poll">Cancel poll</button>'
+        '</div>'
+        '<p id="stop-status" class="meta"></p>'
+        '<p class="meta">"Cancel poll" ends the running job within a minute. The schedule '
+        'starts a new one within three hours; "Go to GitHub" lets you start or stop one by hand.</p>'
     )
     parts.append(FORM)
     parts.append(

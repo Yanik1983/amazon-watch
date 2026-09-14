@@ -96,9 +96,15 @@ def test_check_now_is_a_button_that_sends_a_poll_command():
     assert "Opens GitHub Actions" not in page
 
 
-def test_the_poll_workflow_stays_linked_as_a_fallback():
+def test_go_to_github_links_to_the_poll_workflow():
     page = render_page(base_state(), [], [entry()], NOW)
-    assert f'href="{config.WORKFLOW_URL}"' in page
+    assert f'<a class="check secondary" href="{config.WORKFLOW_URL}">Go to GitHub</a>' in page
+
+
+def test_cancel_poll_is_a_button_that_sends_a_stop_command():
+    page = render_page(base_state(), [], [entry()], NOW)
+    assert '<button type="button" class="check secondary" id="stop-poll">Cancel poll</button>' in page
+    assert 'action: "stop"' in page
 
 
 def test_the_manage_workflow_is_linked_as_a_fallback():

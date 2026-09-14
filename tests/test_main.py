@@ -597,3 +597,50 @@ def test_the_real_fetcher_does_not_reopen_for_a_non_captcha_error(tmp_path, monk
     assert len(opened) == 1
     assert st["products"][DEF]["fail_count"] == 1
     assert st["products"][OTHER]["fail_count"] == 0
+
+
+# --- stopping the job from the page ----------------------------------------
+
+
+def signed_mailbox(phrase, action, nonce="stop1"):
+    import json as _json
+    import time as _time
+    from watch import commands
+    cmd = {"action": action, "product": "", "label": "",
+           "ts": int(_time.time()), "nonce": nonce, "v": 1}
+    body = _json.dumps({"cmd": cmd, "sig": commands.sign(phrase, cmd)})
+
+    def mailbox(url, **kw):
+        class R:
+            status_code = 200
+            text = _json.dumps({"event": "message", "message": body})
+        return R()
+    return mailbox
+
+
+def test_a_stop_note_ends_the_tick_without_polling(tmp_path):
+    from watch.main import tick
+
+    def must_not_run(asin):
+        raise AssertionError("Amazon was polled on a stop tick")
+
+    p = tick_paths(tmp_path, [entry(DEF, "Ladle")])
+    st = tick(passphrase="pw", fetch=must_not_run, notifier=FakeNotifier(), now=NOW,
+              get=signed_mailbox("pw", "stop"), post=lambda *a, **k: None,
+              history_path=tmp_path / "history.json", **p)
+    assert st["stop_requested"] is True
+    assert st["last_checked"] is None
+    saved = load_state(p["state_path"])
+    assert saved["command_nonces"] == ["stop1"]      # the note is not applied twice
+    assert "stop_requested" not in saved             # the next job must start normally
+
+
+def test_tick_main_exits_with_the_stop_code_on_a_stop_note(monkeypatch):
+    from watch import main
+
+    def fake_tick(now=None, **kw):
+        return {"last_checked": None, "products": {}, "stop_requested": True}
+    monkeypatch.setattr(main, "tick", fake_tick)
+    assert main.tick_main() == main.EXIT_STOP
+    assert main.EXIT_STOP not in (0, main.EXIT_RESTART)
+

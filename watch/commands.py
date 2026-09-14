@@ -102,7 +102,8 @@ def apply_commands(
     """Act on any verified notes in the mailbox.
 
     Returns True when the watcher should poll Amazon now: the product list
-    changed, or the page's "Check now" button asked for a poll.
+    changed, or the page's "Check now" button asked for a poll. A "stop" note
+    sets state["stop_requested"], which the tick reads and never saves.
 
     Never raises. The mailbox is a convenience; a network failure, a rate limit or
     a flood of junk must not stop the watcher from watching.
@@ -157,6 +158,11 @@ def apply_commands(
             poll_now = True
             log.info("command applied: poll now")
             _reply(post, topic, nonce, True, "poll: asking Amazon now")
+            continue
+        if action == "stop":
+            state["stop_requested"] = True
+            log.info("command applied: stop")
+            _reply(post, topic, nonce, True, "stop: the job ends after this tick")
             continue
         try:
             if action == "add":

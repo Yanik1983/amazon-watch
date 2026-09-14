@@ -75,9 +75,10 @@ jobs:
             # Reads the command mailbox; polls Amazon only when the hour is up.
             # Exit 3 means every product has been failing for a while, which is
             # almost always Amazon captcha-blocking this runner's address.
+            # Exit 4 means the status page's "Cancel poll" button was pressed.
             rc=0
             python -m watch.tick || rc=$?
-            [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || echo "tick $n exited $rc"
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || [ "$rc" -eq 4 ] || echo "tick $n exited $rc"
             git add --all -- state.json history.json products.json docs/index.html || true
             if git diff --cached --quiet; then
               :
@@ -87,6 +88,10 @@ jobs:
               # A rejected push needs no repair: the next tick resets to main and
               # acts again, and an unsent alert is re-detected from that state.
               git push -q origin HEAD:main || echo "push rejected; the next tick retries"
+            fi
+            if [ "$rc" -eq 4 ]; then
+              echo "tick $n: stopped from the status page; the schedule starts the next job"
+              break
             fi
             if [ "$rc" -eq 3 ]; then
               # A replacement job runs on a different machine with a different

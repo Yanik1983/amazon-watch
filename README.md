@@ -40,7 +40,10 @@ state of every watched product and every change observed so far.
    one card per product, free ones first, when the next automatic check is due, a
    "Check now" button and the add/remove form. "Check now" drops a signed `poll`
    note in the same mailbox the form uses, so the watcher asks Amazon on its next
-   tick, within a minute. Timestamps are Jerusalem local time with UTC beside them.
+   tick, within a minute. "Cancel poll" sends a `stop` note: the tick exits with
+   status 4 and the job ends without starting a replacement, until the schedule
+   or a manual run starts the next one. "Go to GitHub" opens the poll workflow.
+   Timestamps are Jerusalem local time with UTC beside them.
 6. If three polls in a row fail for a product (captcha, network, layout change), a
    warning push is sent for it and repeated while the failures continue. When every
    watched product fails at once — a captcha or a network problem rather than a
