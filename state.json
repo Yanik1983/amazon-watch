@@ -8,12 +8,12 @@
     "35823bf604a8b595",
     "706d20e73c8150bd"
   ],
-  "last_checked": "2026-09-14T17:05:18.929461+00:00",
+  "last_checked": "2026-09-14T17:20:31.269740+00:00",
   "products": {
     "B07SR49JCG": {
       "checked_at": "2026-09-14T13:01:57.527080+00:00",
       "delivery_text": "$19.82",
-      "fail_count": 13,
+      "fail_count": 14,
       "free": false,
       "last_error": "first GET: captcha page returned",
       "last_success": "2026-09-14T13:01:57.527080+00:00",
@@ -23,7 +23,7 @@
     "B07W1P15GL": {
       "checked_at": "2026-09-14T13:01:57.527080+00:00",
       "delivery_text": "$19.28",
-      "fail_count": 13,
+      "fail_count": 14,
       "free": false,
       "last_error": "first GET: captcha page returned",
       "last_success": "2026-09-14T13:01:57.527080+00:00",
@@ -33,7 +33,7 @@
     "B086VGB1LN": {
       "checked_at": "2026-09-14T13:01:57.527080+00:00",
       "delivery_text": "$19.60",
-      "fail_count": 13,
+      "fail_count": 14,
       "free": false,
       "last_error": "first GET: captcha page returned",
       "last_success": "2026-09-14T13:01:57.527080+00:00",
