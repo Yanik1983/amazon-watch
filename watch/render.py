@@ -27,7 +27,8 @@ h1 a { color: inherit; }
 .meta { color: #555; font-size: .95rem; }
 .warn { background: #fff3c4; border: 1px solid #e0c060; padding: .5rem .75rem;
         border-radius: .4rem; margin: 1rem 0; }
-.check { display: block; margin: 1.2rem 0 .3rem; padding: .85rem 1rem; border-radius: .5rem;
+.check { display: block; width: 100%; box-sizing: border-box; font: inherit; border: 0; cursor: pointer;
+  margin: 1.2rem 0 .3rem; padding: .85rem 1rem; border-radius: .5rem;
          background: #1f6feb; color: #fff; font-weight: 700; font-size: 1.05rem;
          text-align: center; text-decoration: none; }
 .check:active { background: #174ea6; }
@@ -136,7 +137,7 @@ SCRIPT = """
 
   // Wait for the watcher's reply on the same topic. It arrives within about a
   // minute, which is how often the poll job looks in the mailbox.
-  async function awaitReply(topic, id, deadline) {
+  async function awaitReply(topic, id, deadline, say) {
     while (Date.now() < deadline) {
       await new Promise(function (r) { setTimeout(r, 3000); });
       var left = Math.round((deadline - Date.now()) / 1000);
@@ -157,20 +158,24 @@ SCRIPT = """
     return null;
   }
 
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
+  // Sign `fields` with the passphrase, drop the note in the mailbox, and wait
+  // for the watcher's answer. Returns the reply, or null when none came in time.
+  // `say` reports progress next to whichever button was pressed.
+  async function send(fields, say, btn) {
     if (!window.crypto || !crypto.subtle) {
-      return say("This browser cannot sign the request. Use the manage workflow below.", "bad");
+      say("This browser cannot sign the request. Use the workflows on GitHub below.", "bad");
+      return null;
     }
     var phrase = stored() || phraseInput.value.trim();
-    if (!phrase) return say("Enter the passphrase first.", "bad");
-    var product = document.getElementById("cmd-product").value.trim();
-    if (!product) return say("Enter an ASIN or an Amazon link.", "bad");
-
+    if (!phrase) {
+      phraseRow.hidden = false;
+      say("Enter the passphrase in the form below first.", "bad");
+      return null;
+    }
     var cmd = {
-      action: document.getElementById("cmd-action").value,
-      product: product,
-      label: document.getElementById("cmd-label").value.trim(),
+      action: fields.action,
+      product: fields.product || "",
+      label: fields.label || "",
       ts: Math.floor(Date.now() / 1000),
       nonce: nonce(),
       v: VERSION
@@ -179,28 +184,53 @@ SCRIPT = """
     var canonical = [cmd.action, cmd.product, cmd.label, cmd.ts, cmd.nonce].join("\\n");
     var payload = JSON.stringify({ cmd: cmd, sig: await hmac(phrase, canonical) });
 
-    sendBtn.disabled = true;
+    btn.disabled = true;
     say("Sending\\u2026");
     try {
       var resp = await fetch(NTFY + "/" + topic, { method: "POST", body: payload });
       if (!resp.ok) throw new Error("ntfy returned " + resp.status);
     } catch (err) {
-      sendBtn.disabled = false;
-      return say("Could not reach the mailbox: " + err.message, "bad");
+      btn.disabled = false;
+      say("Could not reach the mailbox: " + err.message, "bad");
+      return null;
     }
     if (!stored()) { store(phrase); phraseInput.value = ""; showPhraseState(); }
 
-    var reply = await awaitReply(topic, cmd.nonce, Date.now() + 90000);
-    sendBtn.disabled = false;
+    var reply = await awaitReply(topic, cmd.nonce, Date.now() + 90000, say);
+    btn.disabled = false;
     if (!reply) {
-      return say("No answer yet. The watcher may be between jobs; it will pick this up "
-                 + "within ten minutes. Reload later to check.", "bad");
+      say("No answer yet. The watcher may be between jobs; it will pick this up "
+          + "within ten minutes. Reload later to check.", "bad");
+      return null;
     }
-    if (!reply.ok) return say(reply.message, "bad");
+    if (!reply.ok) { say(reply.message, "bad"); return null; }
+    return reply;
+  }
+
+  form.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var product = document.getElementById("cmd-product").value.trim();
+    if (!product) return say("Enter an ASIN or an Amazon link.", "bad");
+    var reply = await send({
+      action: document.getElementById("cmd-action").value,
+      product: product,
+      label: document.getElementById("cmd-label").value.trim()
+    }, say, sendBtn);
+    if (!reply) return;
     say(reply.message + " \\u2014 the page updates in a minute or two.", "ok");
     document.getElementById("cmd-product").value = "";
     document.getElementById("cmd-label").value = "";
     setTimeout(function () { location.reload(); }, 90000);
+  });
+
+  var checkBtn = document.getElementById("check-now");
+  var checkStatus = document.getElementById("check-status");
+  function sayCheck(text, cls) { checkStatus.textContent = text; checkStatus.className = cls || "meta"; }
+  checkBtn.addEventListener("click", async function () {
+    var reply = await send({ action: "poll" }, sayCheck, checkBtn);
+    if (!reply) return;
+    sayCheck("Asking Amazon now. This page reloads with the result in about two minutes.", "ok");
+    setTimeout(function () { location.reload(); }, 120000);
   });
 
   showPhraseState();
@@ -327,9 +357,10 @@ def render_page(state: dict, history: list[dict], product_list: list[dict],
         f'{next_line}</p>'
     )
     parts.append(
-        f'<a class="check" href="{escape(config.WORKFLOW_URL)}">Check now</a>'
-        '<p class="meta">Opens GitHub Actions. Tap "Run workflow" there, then reload this page '
-        'in about a minute. A manual run also restarts the hourly cycle.</p>'
+        '<button type="button" class="check" id="check-now">Check now</button>'
+        '<p id="check-status" class="meta"></p>'
+        '<p class="meta">Asks Amazon now instead of waiting for the next automatic check. '
+        'Needs the passphrase from the form below the first time.</p>'
     )
     parts.append(FORM)
     parts.append(
@@ -340,8 +371,9 @@ def render_page(state: dict, history: list[dict], product_list: list[dict],
         f'<details><summary class="meta">Lost the passphrase?</summary>'
         f'<p class="meta">Add and remove products on GitHub instead: '
         f'<a href="{escape(config.MANAGE_WORKFLOW_URL)}">the manage workflow</a>. '
-        'Tap "Run workflow", choose add or remove, and paste an ASIN or an Amazon link.'
-        '</p></details>'
+        'Tap "Run workflow", choose add or remove, and paste an ASIN or an Amazon link. '
+        f'A check can be started from <a href="{escape(config.WORKFLOW_URL)}">the poll '
+        'workflow</a> the same way.</p></details>'
     )
     parts.append(
         f'<p class="meta">Times are {escape(config.DISPLAY_TZ.split("/")[-1])} local unless '

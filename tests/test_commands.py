@@ -257,3 +257,14 @@ def test_a_flood_is_bounded(tmp_path):
     get, _ = mailbox(*junk, note())
     assert commands.apply_commands(PHRASE, p, st, NOW, get=get,
                                    post=recording_post()[0]) is True
+
+
+def test_poll_asks_for_a_poll_without_changing_the_list(tmp_path):
+    p, st = setup(tmp_path)
+    get, _ = mailbox(note(action="poll", product="", label=""))
+    post, sent = recording_post()
+    assert commands.apply_commands(PHRASE, p, st, NOW, get=get, post=post) is True
+    assert [e["asin"] for e in products.load(p)] == [DEF]
+    assert sent[0]["ok"] is True and sent[0]["reply"] == "n1"
+    assert "poll" in sent[0]["message"].lower()
+    assert st["command_nonces"] == ["n1"]

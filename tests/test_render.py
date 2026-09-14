@@ -89,10 +89,16 @@ def test_history_rows_newest_first():
     assert page.count("<tr>") == 3  # header + 2 rows
 
 
-def test_check_now_button_links_to_the_workflow():
+def test_check_now_is_a_button_that_sends_a_poll_command():
     page = render_page(base_state(), [], [entry()], NOW)
-    assert "Check now" in page
-    assert 'href="https://github.com/Yanik1983/amazon-watch/actions/workflows/poll.yml"' in page
+    assert '<button type="button" class="check" id="check-now">Check now</button>' in page
+    assert 'action: "poll"' in page
+    assert "Opens GitHub Actions" not in page
+
+
+def test_the_poll_workflow_stays_linked_as_a_fallback():
+    page = render_page(base_state(), [], [entry()], NOW)
+    assert f'href="{config.WORKFLOW_URL}"' in page
 
 
 def test_the_manage_workflow_is_linked_as_a_fallback():

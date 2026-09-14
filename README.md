@@ -38,8 +38,9 @@ state of every watched product and every change observed so far.
    `history.json`.
 5. `docs/index.html` is re-rendered on every poll and served by GitHub Pages. It shows
    one card per product, free ones first, when the next automatic check is due, a
-   "Check now" button and the add/remove form. Timestamps are Jerusalem local time
-   with UTC beside them.
+   "Check now" button and the add/remove form. "Check now" drops a signed `poll`
+   note in the same mailbox the form uses, so the watcher asks Amazon on its next
+   tick, within a minute. Timestamps are Jerusalem local time with UTC beside them.
 6. If three polls in a row fail for a product (captcha, network, layout change), a
    warning push is sent for it and repeated while the failures continue. When every
    watched product fails at once — a captcha or a network problem rather than a

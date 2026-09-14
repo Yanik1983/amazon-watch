@@ -99,7 +99,10 @@ def apply_commands(
     get=requests.get,
     post=requests.post,
 ) -> bool:
-    """Act on any verified notes in the mailbox. Returns True if the list changed.
+    """Act on any verified notes in the mailbox.
+
+    Returns True when the watcher should poll Amazon now: the product list
+    changed, or the page's "Check now" button asked for a poll.
 
     Never raises. The mailbox is a convenience; a network failure, a rate limit or
     a flood of junk must not stop the watcher from watching.
@@ -119,7 +122,8 @@ def apply_commands(
 
     seen = list(state.get("command_nonces") or [])
     entries = products.load(products_path)
-    changed = False
+    list_changed = False
+    poll_now = False
 
     for note in notes:
         message = note.get("message") if isinstance(note, dict) else None
@@ -149,6 +153,11 @@ def apply_commands(
 
         seen.append(nonce)
         action = cmd.get("action")
+        if action == "poll":
+            poll_now = True
+            log.info("command applied: poll now")
+            _reply(post, topic, nonce, True, "poll: asking Amazon now")
+            continue
         try:
             if action == "add":
                 entries = products.add(entries, str(cmd.get("product") or ""),
@@ -163,7 +172,7 @@ def apply_commands(
             _reply(post, topic, nonce, False, str(e))
             continue
 
-        changed = True
+        list_changed = True
         count = len(entries)
         noun = "product" if count == 1 else "products"
         log.info("command applied: %s %s", action, cmd.get("product"))
@@ -172,6 +181,6 @@ def apply_commands(
                f"({count} {noun} watched)")
 
     state["command_nonces"] = seen[-NONCE_MEMORY:]
-    if changed:
+    if list_changed:
         products.save(products_path, entries)
-    return changed
+    return list_changed or poll_now
