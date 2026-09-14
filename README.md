@@ -16,8 +16,11 @@ state of every watched product and every change observed so far.
 2. `watch/client.py` sets the ship-to country to Israel once per cycle, through
    Amazon's address-change endpoint, and then fetches each product page on that
    same session. The fetch uses `curl_cffi` impersonating Chrome, because plain
-   HTTP clients get a captcha page. If the handshake itself is served a captcha,
-   it is retried on a fresh session with another browser profile (Chrome, an
+   HTTP clients get a captcha page. Amazon's captcha page currently has no
+   picture, only a "Continue shopping" button with the answer pre-filled, so the
+   client submits that form itself and fetches the page again; a captcha that
+   does show a picture is reported as a failure. If the handshake is still
+   served a captcha, it is retried on a fresh session with another browser profile (Chrome, an
    older Chrome, Edge), a few seconds apart, before the cycle is counted as
    failed. A product page that comes back as a captcha after a good handshake
    is retried once on a fresh session. A cycle costs two requests for the

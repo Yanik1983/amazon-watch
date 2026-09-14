@@ -1,11 +1,15 @@
 """Fetch an Amazon product page with the ship-to country set to Israel.
 
 Plain HTTP clients get a captcha page from Amazon. curl_cffi impersonating Chrome
-gets the real page. The ship-to country is changed without login by POSTing to
-the "glow" address-change endpoint with the page's anti-CSRF token.
+usually gets the real page; when the captcha page comes anyway, its form is
+submitted the way the "Continue shopping" button would, which clears the
+session, and the page is fetched again. The ship-to country is changed without
+login by POSTing to the "glow" address-change endpoint with the page's
+anti-CSRF token.
 """
 from __future__ import annotations
 
+import html
 import logging
 import re
 import time
@@ -20,6 +24,11 @@ TOKEN_RE = re.compile(
 GLOW_RE = re.compile(r'id="glow-ingress-line2"[^>]*>\s*([^<]*)<', re.S)
 # The flag is a boolean 0/1; the trailing guard stops a value such as 10 matching.
 ADDRESS_UPDATED_RE = re.compile(r'"isAddressUpdated"\s*:\s*1(?!\d)')
+
+# The captcha page's form. In its current shape there is no picture: the answer
+# sits pre-filled in field-keywords and a human only clicks "Continue shopping".
+FORM_ACTION_RE = re.compile(r'<form[^>]*action="([^"]+)"')
+HIDDEN_INPUT_RE = re.compile(r'<input type="hidden" name="([^"]+)" value="([^"]*)"')
 
 # A real product page is around 2.7 million characters; a captcha page is under 4,000.
 MIN_PAGE_CHARS = 20_000
@@ -50,15 +59,50 @@ def new_session(profile: str = HANDSHAKE_PROFILES[0]):
     return s
 
 
+def _is_captcha(text: str) -> bool:
+    return "captcha" in text[:CAPTCHA_SCAN_CHARS].lower()
+
+
 def _check_page(resp, step: str) -> str:
     if resp.status_code != 200:
         raise FetchError(f"{step}: HTTP {resp.status_code}")
     text = resp.text
-    if "captcha" in text[:CAPTCHA_SCAN_CHARS].lower():
+    if _is_captcha(text):
         raise FetchError(f"{step}: captcha page returned")
     if len(text) < MIN_PAGE_CHARS:
         raise FetchError(f"{step}: body too small ({len(text)} characters)")
     return text
+
+
+def _continue_shopping(session, captcha_page: str, referer: str, step: str) -> None:
+    """Submit the captcha page's form, which is what "Continue shopping" does.
+
+    Amazon then marks the session as cleared with a cookie, and the page that
+    was asked for can be fetched again. Only the button form is handled: a
+    page whose answer field is empty wants a picture read, which this does not do.
+    """
+    m = FORM_ACTION_RE.search(captcha_page)
+    fields = {k: html.unescape(v) for k, v in HIDDEN_INPUT_RE.findall(captcha_page)}
+    if not m or "amzn" not in fields:
+        raise FetchError(f"{step}: captcha page returned")
+    if not fields.get("field-keywords"):
+        raise FetchError(f"{step}: captcha with a picture returned")
+    resp = session.get(
+        config.BASE_URL + m.group(1),
+        params=fields,
+        headers={"Referer": referer},
+        timeout=TIMEOUT,
+    )
+    log.info("%s: clicked through the captcha page (HTTP %s)", step, resp.status_code)
+
+
+def _get_page(session, url: str, step: str) -> str:
+    """GET `url`, clicking through one captcha page if that is what came back."""
+    resp = session.get(url, timeout=TIMEOUT)
+    if resp.status_code == 200 and _is_captcha(resp.text):
+        _continue_shopping(session, resp.text, url, step)
+        resp = session.get(url, timeout=TIMEOUT)
+    return _check_page(resp, step)
 
 
 def set_israel(session, asin: str = config.DEFAULT_ASIN,
@@ -71,7 +115,7 @@ def set_israel(session, asin: str = config.DEFAULT_ASIN,
     the glow line on every page it returns.
     """
     url = config.product_url(asin)
-    first = _check_page(session.get(url, timeout=TIMEOUT), "first GET")
+    first = _get_page(session, url, "first GET")
     m = TOKEN_RE.search(first)
     if not m:
         raise FetchError("token: anti-csrftoken-a2z not found in page")
@@ -125,13 +169,13 @@ def open_israel_session(session_factory=new_session, sleep=time.sleep):
 
 def fetch_page(session, asin: str) -> str:
     """One product page, verified to have been rendered for the Israel context."""
-    html = _check_page(session.get(config.product_url(asin), timeout=TIMEOUT), f"GET {asin}")
-    g = GLOW_RE.search(html)
+    text = _get_page(session, config.product_url(asin), f"GET {asin}")
+    g = GLOW_RE.search(text)
     if not g or "israel" not in g.group(1).lower():
         found = g.group(1).strip() if g else "(no glow line)"
         raise FetchError(f"glow: ship-to country is not Israel: {found}")
-    log.info("fetched %s in Israel context (%d characters)", asin, len(html))
-    return html
+    log.info("fetched %s in Israel context (%d characters)", asin, len(text))
+    return text
 
 
 def fetch_product(asin: str = config.DEFAULT_ASIN, session=None,

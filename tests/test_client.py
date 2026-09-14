@@ -242,3 +242,59 @@ def test_handshake_profiles_and_backoff_line_up():
     assert len(client.HANDSHAKE_PROFILES) >= 2
     assert len(client.HANDSHAKE_BACKOFF) == len(client.HANDSHAKE_PROFILES) - 1
     assert all(b > 0 for b in client.HANDSHAKE_BACKOFF)
+
+
+# --- the "Continue shopping" interstitial ----------------------------------
+
+
+def interstitial(keywords="RJMKJN"):
+    """Amazon's captcha page in its button form: the answer is pre-filled."""
+    return (
+        '<html><body>Click the button below to continue shopping'
+        '<form method="get" action="/errors_page/validateCaptcha" name="">'
+        '<input type="hidden" name="amzn" value="dQmeZfN6DArVbhTej3HMCw==" />'
+        '<input type="hidden" name="amzn-r" value="&#047;" />'
+        '<input type="hidden" name="field-keywords" value="%s" />'
+        '<button type="submit">Continue shopping</button></form></body></html>' % keywords
+    )
+
+
+def test_set_israel_clicks_through_the_interstitial():
+    s = FakeSession([R(interstitial()), R("", status_code=202), R(page()), ADDRESS_OK])
+    client.set_israel(s, "B07W1P15GL")
+    assert [c[0] for c in s.calls] == ["GET", "GET", "GET", "POST"]
+    _, url, kw = s.calls[1]
+    assert url == "https://www.amazon.com/errors_page/validateCaptcha"
+    assert kw["params"] == {"amzn": "dQmeZfN6DArVbhTej3HMCw==", "amzn-r": "/",
+                            "field-keywords": "RJMKJN"}
+    assert kw["headers"]["Referer"] == "https://www.amazon.com/dp/B07W1P15GL"
+    assert s.calls[2][1] == "https://www.amazon.com/dp/B07W1P15GL"
+
+
+def test_fetch_page_clicks_through_the_interstitial():
+    body = page() + "<!-- after -->"
+    s = FakeSession([R(interstitial()), R("", status_code=202), R(body)])
+    assert client.fetch_page(s, "B000000001") == body
+    assert [c[0] for c in s.calls] == ["GET", "GET", "GET"]
+    assert s.calls[1][2]["headers"]["Referer"] == "https://www.amazon.com/dp/B000000001"
+
+
+def test_a_second_interstitial_in_a_row_is_a_failure():
+    s = FakeSession([R(interstitial()), R("", status_code=202), R(interstitial())])
+    with pytest.raises(FetchError, match="GET B000000001: captcha page returned"):
+        client.fetch_page(s, "B000000001")
+    assert [c[0] for c in s.calls] == ["GET", "GET", "GET"]   # clicked once, no loop
+
+
+def test_a_captcha_with_a_picture_is_a_failure():
+    s = FakeSession([R(interstitial(keywords=""))])
+    with pytest.raises(FetchError, match="captcha with a picture"):
+        client.fetch_page(s, "B000000001")
+    assert [c[0] for c in s.calls] == ["GET"]
+
+
+def test_a_captcha_page_without_a_form_is_a_failure():
+    s = FakeSession([R("<html>Enter the characters you see below (captcha)</html>")])
+    with pytest.raises(FetchError, match="captcha"):
+        client.fetch_page(s, "B000000001")
+    assert [c[0] for c in s.calls] == ["GET"]
