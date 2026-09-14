@@ -10,7 +10,7 @@ from typing import Callable
 
 from watch import commands, config, history as history_mod, notify
 from watch import products as products_mod, state as state_mod
-from watch.client import FetchError, fetch_page, new_session, set_israel
+from watch.client import FetchError, fetch_page, open_israel_session
 from watch.parser import ParseError, Product, parse
 from watch.render import render_page
 
@@ -19,6 +19,11 @@ log = logging.getLogger("watch")
 Fetch = Callable[[str], str]
 Notifier = Callable[..., bool]
 
+# Exit status of `python -m watch.tick` asking the workflow to end this job and
+# start another. A new job runs on a new machine with a new address, which is
+# the one thing that helps once Amazon has decided to captcha this one.
+EXIT_RESTART = 3
+
 
 def _session_fetch() -> Fetch:
     """A fetcher sharing one Israel-context session across the whole cycle.
@@ -26,8 +31,7 @@ def _session_fetch() -> Fetch:
     The handshake costs two requests and every product after that costs one, so
     watching ten products is twelve requests an hour rather than thirty.
     """
-    session = new_session()
-    set_israel(session)
+    session = open_israel_session()
     return lambda asin: fetch_page(session, asin)
 
 
@@ -185,6 +189,23 @@ def poll_due(st: dict, now: datetime) -> bool:
     return (now - when).total_seconds() >= interval
 
 
+def restart_wanted(st: dict, now: datetime) -> bool:
+    """Whether this tick's poll showed Amazon blocking the whole job.
+
+    True only on a tick that polled (last_checked is this tick) and saw every
+    product fail for at least RESTART_AFTER_FAILS polls in a row. Tying it to a
+    poll bounds restarts to one per retry interval, even when every address
+    GitHub hands out is blocked.
+    """
+    if st.get("last_checked") != now.isoformat():
+        return False
+    entries = st.get("products") or {}
+    if not entries:
+        return False
+    return all(int(e.get("fail_count") or 0) >= config.RESTART_AFTER_FAILS
+               for e in entries.values())
+
+
 def tick(
     passphrase: str | None = None,
     products_path: str | Path = config.PRODUCTS_PATH,
@@ -245,10 +266,16 @@ def tick_main() -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    now = datetime.now(timezone.utc)
     try:
-        tick()
+        st = tick(now=now)
     except Exception:  # a bad tick must not end the loop; the next one tries again
         log.exception("unexpected error in tick")
+        return 0
+    if restart_wanted(st, now):
+        log.warning("every product has failed %d polls in a row; asking for a new runner",
+                    config.RESTART_AFTER_FAILS)
+        return EXIT_RESTART
     return 0
 
 

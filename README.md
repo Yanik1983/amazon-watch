@@ -16,8 +16,10 @@ state of every watched product and every change observed so far.
 2. `watch/client.py` sets the ship-to country to Israel once per cycle, through
    Amazon's address-change endpoint, and then fetches each product page on that
    same session. The fetch uses `curl_cffi` impersonating Chrome, because plain
-   HTTP clients get a captcha page. A cycle costs two requests for the handshake
-   plus one per product.
+   HTTP clients get a captcha page. If the handshake itself is served a captcha,
+   it is retried on a fresh session with another browser profile (Chrome, an
+   older Chrome, Edge), a few seconds apart, before the cycle is counted as
+   failed. A cycle costs two requests for the handshake plus one per product.
 3. `watch/parser.py` reads the delivery block of each page. Inside it, the first
    `data-csa-c-delivery-price` attribute that is not the "fastest" express option holds
    the delivery price: `FREE` (or a zero amount) when the product is eligible, otherwise
@@ -38,7 +40,10 @@ state of every watched product and every change observed so far.
    watched product fails at once — a captcha or a network problem rather than a
    product problem — one combined warning is sent instead of one per product, and
    the next attempt comes after 15 minutes rather than an hour, so a transient
-   block does not leave the page stale for an hour.
+   block does not leave the page stale for an hour. When every product has failed
+   two polls in a row, the tick exits with status 3 and the workflow starts a
+   replacement job: Amazon's captcha block is on the runner's address, and a new
+   job runs on a new machine. Restarts happen at most once per retry interval.
 
 The GitHub Actions job is one long loop that ticks every minute for about 5 h 50 m.
 A tick reads the command mailbox and asks Amazon only when an hour has passed since

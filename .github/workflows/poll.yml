@@ -5,7 +5,8 @@ name: poll
 # the page's Add button respond in about a minute without asking Amazon more
 # often. A new job starts every 3 hours (or on a code push) and cancels the
 # previous one, so the watcher is running continuously even when GitHub delays
-# scheduled runs.
+# scheduled runs. A job also replaces itself early when Amazon has been
+# captcha-blocking its runner for two polls, since a new job gets a new address.
 on:
   schedule:
     - cron: "13 */3 * * *"
@@ -22,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # to start a replacement job when Amazon blocks this runner
 
 concurrency:
   group: poll
@@ -53,6 +55,7 @@ jobs:
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           NTFY_SERVER: ${{ vars.NTFY_SERVER }}
           CMD_PASSPHRASE: ${{ secrets.CMD_PASSPHRASE }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -70,7 +73,11 @@ jobs:
               echo "tick $n: fetch failed; working from the checkout as it stands"
             fi
             # Reads the command mailbox; polls Amazon only when the hour is up.
-            python -m watch.tick || echo "tick $n exited non-zero"
+            # Exit 3 means every product has been failing for a while, which is
+            # almost always Amazon captcha-blocking this runner's address.
+            rc=0
+            python -m watch.tick || rc=$?
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || echo "tick $n exited $rc"
             git add --all -- state.json history.json products.json docs/index.html || true
             if git diff --cached --quiet; then
               :
@@ -80,6 +87,17 @@ jobs:
               # A rejected push needs no repair: the next tick resets to main and
               # acts again, and an unsent alert is re-detected from that state.
               git push -q origin HEAD:main || echo "push rejected; the next tick retries"
+            fi
+            if [ "$rc" -eq 3 ]; then
+              # A replacement job runs on a different machine with a different
+              # address. Its start cancels this job through the concurrency
+              # group, so the loop ends here either way. The tick only asks for
+              # this after a poll, so restarts are at most one per retry interval.
+              echo "tick $n: Amazon keeps blocking this runner; starting a replacement job"
+              if gh workflow run poll.yml --ref main; then
+                break
+              fi
+              echo "dispatch failed; carrying on here until the next scheduled job"
             fi
             remaining=$(( end - $(date +%s) ))
             [ "$remaining" -le "$TICK_SECONDS" ] && break

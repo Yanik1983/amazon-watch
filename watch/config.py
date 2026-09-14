@@ -51,6 +51,11 @@ POLL_INTERVAL_SECONDS = int(os.environ.get("INTERVAL_SECONDS") or 3600)
 # minutes (FAIL_ALERT_AT polls) instead of three hours.
 RETRY_INTERVAL_SECONDS = 900
 
+# Consecutive polls on which every product failed before the tick asks the
+# workflow for a new job, and with it a new runner address. Two polls is half an
+# hour at the retry cadence: long enough to skip blocks that clear by themselves.
+RESTART_AFTER_FAILS = 2
+
 # Timestamps on the status page are shown in this zone as well as in UTC.
 DISPLAY_TZ = "Asia/Jerusalem"
 

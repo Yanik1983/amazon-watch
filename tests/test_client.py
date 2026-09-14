@@ -190,3 +190,55 @@ def test_one_handshake_then_a_page_per_product():
         "https://www.amazon.com/dp/B07W1P15GL",
         "https://www.amazon.com/dp/B000000001",
     ]
+
+
+# --- opening a session: retry the handshake on a fresh session -------------
+
+
+def sessions_and_factory(*sessions):
+    """A session factory handing out `sessions` in order and recording each profile."""
+    queue = list(sessions)
+    profiles = []
+
+    def factory(profile):
+        profiles.append(profile)
+        return queue.pop(0)
+    return profiles, factory
+
+
+def test_open_israel_session_returns_the_first_session_when_the_handshake_works():
+    good = FakeSession([R(page()), ADDRESS_OK])
+    profiles, factory = sessions_and_factory(good)
+    slept = []
+    assert client.open_israel_session(session_factory=factory, sleep=slept.append) is good
+    assert profiles == [client.HANDSHAKE_PROFILES[0]]
+    assert slept == []
+
+
+def test_open_israel_session_retries_on_a_fresh_session_with_another_profile():
+    blocked = FakeSession([R("<html>captcha</html>")])
+    good = FakeSession([R(page()), ADDRESS_OK])
+    profiles, factory = sessions_and_factory(blocked, good)
+    slept = []
+    assert client.open_israel_session(session_factory=factory, sleep=slept.append) is good
+    assert profiles == list(client.HANDSHAKE_PROFILES[:2])
+    assert profiles[0] != profiles[1]
+    assert slept == [client.HANDSHAKE_BACKOFF[0]]
+    assert [c[0] for c in blocked.calls] == ["GET"]      # the blocked session is dropped
+
+
+def test_open_israel_session_raises_the_last_error_after_every_profile_failed():
+    sessions = [FakeSession([R("<html>captcha</html>")]) for _ in client.HANDSHAKE_PROFILES]
+    sessions[-1] = FakeSession([R(page()), R('{"isAddressUpdated":0}')])
+    profiles, factory = sessions_and_factory(*sessions)
+    slept = []
+    with pytest.raises(FetchError, match="address-change: not updated"):
+        client.open_israel_session(session_factory=factory, sleep=slept.append)
+    assert profiles == list(client.HANDSHAKE_PROFILES)
+    assert slept == list(client.HANDSHAKE_BACKOFF)        # no sleep after the last attempt
+
+
+def test_handshake_profiles_and_backoff_line_up():
+    assert len(client.HANDSHAKE_PROFILES) >= 2
+    assert len(client.HANDSHAKE_BACKOFF) == len(client.HANDSHAKE_PROFILES) - 1
+    assert all(b > 0 for b in client.HANDSHAKE_BACKOFF)

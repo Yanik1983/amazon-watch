@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 
 from watch import config
 
@@ -25,16 +26,26 @@ MIN_PAGE_CHARS = 20_000
 CAPTCHA_SCAN_CHARS = 5_000
 TIMEOUT = 30  # seconds allowed for each request to Amazon
 
+# A captcha on the handshake is often a verdict on this one connection rather
+# than on the runner's address, so the handshake is retried on a fresh session
+# that presents a different browser. Each entry is a curl_cffi impersonation
+# target ("chrome" resolves to the newest Chrome the library knows). Only
+# these three got a real page in a probe on 2026-09-14: Safari, Firefox and
+# several older Chrome targets were served a captcha even from a home address.
+HANDSHAKE_PROFILES = ("chrome", "chrome124", "edge101")
+# Seconds to wait before the second and third attempts.
+HANDSHAKE_BACKOFF = (5, 20)
+
 
 class FetchError(Exception):
     """Raised when the product page could not be fetched in the Israel context."""
 
 
-def new_session():
-    """A curl_cffi session that presents Chrome's TLS and header fingerprint."""
+def new_session(profile: str = HANDSHAKE_PROFILES[0]):
+    """A curl_cffi session presenting the TLS and header fingerprint of `profile`."""
     from curl_cffi import requests  # imported lazily so tests never need it
 
-    s = requests.Session(impersonate="chrome")
+    s = requests.Session(impersonate=profile)
     s.headers.update({"Accept-Language": "en-US,en;q=0.9"})
     return s
 
@@ -87,6 +98,29 @@ def set_israel(session, asin: str = config.DEFAULT_ASIN,
     if not ADDRESS_UPDATED_RE.search(resp.text):
         raise FetchError(f"address-change: not updated: {resp.text[:200]}")
     log.info("ship-to country set to %s", country)
+
+
+def open_israel_session(session_factory=new_session, sleep=time.sleep):
+    """A session with the ship-to country set, retrying the handshake if blocked.
+
+    Every attempt starts a new session with the next browser profile, so a
+    connection Amazon has already flagged is never reused. The last error is
+    raised once every profile has been tried.
+    """
+    last: FetchError | None = None
+    for i, profile in enumerate(HANDSHAKE_PROFILES):
+        if i:
+            sleep(HANDSHAKE_BACKOFF[i - 1])
+        session = session_factory(profile)
+        try:
+            set_israel(session)
+            return session
+        except FetchError as e:
+            last = e
+            log.warning("handshake as %s failed (attempt %d of %d): %s",
+                        profile, i + 1, len(HANDSHAKE_PROFILES), e)
+    assert last is not None
+    raise last
 
 
 def fetch_page(session, asin: str) -> str:

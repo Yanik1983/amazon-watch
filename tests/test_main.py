@@ -464,3 +464,77 @@ def test_an_unchanged_tick_rewrites_the_page_byte_for_byte(tmp_path):
     tick(passphrase="", fetch=fetch_returning(NOT_FREE), notifier=n,
          now=NOW + timedelta(minutes=7), get=no_mailbox, history_path=hp, **p)
     assert page.read_text(encoding="utf-8") == before
+
+
+# --- asking the workflow for a fresh runner when Amazon keeps blocking -----
+
+
+def failing_state(*fail_counts, checked=NOW):
+    asins = [DEF, OTHER, "B000000002"][: len(fail_counts)]
+    return {
+        "last_checked": checked.isoformat(),
+        "products": {a: {"fail_count": f} for a, f in zip(asins, fail_counts)},
+    }
+
+
+def test_restart_wanted_after_two_all_failed_polls():
+    from watch.main import restart_wanted
+    assert restart_wanted(failing_state(2, 3), NOW) is True
+
+
+def test_restart_not_wanted_after_a_single_failed_poll():
+    from watch.main import restart_wanted
+    assert restart_wanted(failing_state(1, 1), NOW) is False
+
+
+def test_restart_not_wanted_while_one_product_still_works():
+    from watch.main import restart_wanted
+    assert restart_wanted(failing_state(5, 0), NOW) is False
+
+
+def test_restart_not_wanted_when_this_tick_did_not_poll():
+    from watch.main import restart_wanted
+    earlier = NOW - timedelta(minutes=5)
+    assert restart_wanted(failing_state(4, 4, checked=earlier), NOW) is False
+
+
+def test_restart_not_wanted_with_nothing_watched():
+    from watch.main import restart_wanted
+    assert restart_wanted({"last_checked": NOW.isoformat(), "products": {}}, NOW) is False
+
+
+def test_tick_main_exits_with_the_restart_code_when_a_restart_is_wanted(monkeypatch):
+    from watch import main
+
+    def fake_tick(now=None, **kw):
+        return failing_state(2, 2, checked=now)
+    monkeypatch.setattr(main, "tick", fake_tick)
+    assert main.tick_main() == main.EXIT_RESTART
+
+
+def test_tick_main_exits_zero_when_the_poll_is_healthy(monkeypatch):
+    from watch import main
+
+    def fake_tick(now=None, **kw):
+        return failing_state(0, 0, checked=now)
+    monkeypatch.setattr(main, "tick", fake_tick)
+    assert main.tick_main() == 0
+
+
+def test_the_real_fetcher_opens_one_retrying_session(tmp_path, monkeypatch):
+    from watch import main
+    from tests.test_client import FakeSession, R, page
+    opened = []
+
+    def fake_open():
+        # The fixture is a fragment; page() adds the glow line fetch_page insists on.
+        s = FakeSession([R(page() + NOT_FREE), R(page() + NOT_FREE)])
+        opened.append(s)
+        return s
+    monkeypatch.setattr(main, "open_israel_session", fake_open)
+    p = paths(tmp_path, [entry(DEF, "Ladle"), entry(OTHER, "Kettle")])
+    st = run(fetch=None, notifier=FakeNotifier(), now=NOW, **p)
+    assert len(opened) == 1
+    assert [c[0] for c in opened[0].calls] == ["GET", "GET"]
+    assert st["products"][DEF]["fail_count"] == 0
+    assert st["products"][OTHER]["fail_count"] == 0
