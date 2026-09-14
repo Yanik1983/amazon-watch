@@ -19,7 +19,9 @@ state of every watched product and every change observed so far.
    HTTP clients get a captcha page. If the handshake itself is served a captcha,
    it is retried on a fresh session with another browser profile (Chrome, an
    older Chrome, Edge), a few seconds apart, before the cycle is counted as
-   failed. A cycle costs two requests for the handshake plus one per product.
+   failed. A product page that comes back as a captcha after a good handshake
+   is retried once on a fresh session. A cycle costs two requests for the
+   handshake plus one per product when Amazon is not blocking.
 3. `watch/parser.py` reads the delivery block of each page. Inside it, the first
    `data-csa-c-delivery-price` attribute that is not the "fastest" express option holds
    the delivery price: `FREE` (or a zero amount) when the product is eligible, otherwise

@@ -538,3 +538,62 @@ def test_the_real_fetcher_opens_one_retrying_session(tmp_path, monkeypatch):
     assert [c[0] for c in opened[0].calls] == ["GET", "GET"]
     assert st["products"][DEF]["fail_count"] == 0
     assert st["products"][OTHER]["fail_count"] == 0
+
+
+def test_the_real_fetcher_reopens_the_session_when_a_product_page_is_a_captcha(tmp_path, monkeypatch):
+    """The handshake can pass and the next page still be a captcha: retry that
+    product once on a fresh session rather than counting it failed."""
+    from watch import main
+    from tests.test_client import FakeSession, R, page
+    good = page() + NOT_FREE
+    opened = []
+
+    def fake_open():
+        first = not opened
+        s = FakeSession([R("<html>captcha</html>")] if first else [R(good), R(good)])
+        opened.append(s)
+        return s
+    monkeypatch.setattr(main, "open_israel_session", fake_open)
+    p = paths(tmp_path, [entry(DEF, "Ladle"), entry(OTHER, "Kettle")])
+    st = run(fetch=None, notifier=FakeNotifier(), now=NOW, **p)
+    assert len(opened) == 2
+    assert [c[0] for c in opened[0].calls] == ["GET"]
+    assert [c[0] for c in opened[1].calls] == ["GET", "GET"]   # retry, then the next product
+    assert st["products"][DEF]["fail_count"] == 0
+    assert st["products"][OTHER]["fail_count"] == 0
+
+
+def test_the_real_fetcher_gives_up_on_a_product_after_one_reopen(tmp_path, monkeypatch):
+    from watch import main
+    from tests.test_client import FakeSession, R, page
+    good = page() + NOT_FREE
+    opened = []
+
+    def fake_open():
+        s = FakeSession([R("<html>captcha</html>"), R(good)])
+        opened.append(s)
+        return s
+    monkeypatch.setattr(main, "open_israel_session", fake_open)
+    p = paths(tmp_path, [entry(DEF, "Ladle"), entry(OTHER, "Kettle")])
+    st = run(fetch=None, notifier=FakeNotifier(), now=NOW, **p)
+    assert len(opened) == 2
+    assert st["products"][DEF]["fail_count"] == 1
+    assert "captcha" in st["products"][DEF]["last_error"]
+    assert st["products"][OTHER]["fail_count"] == 0     # served by the second session
+
+
+def test_the_real_fetcher_does_not_reopen_for_a_non_captcha_error(tmp_path, monkeypatch):
+    from watch import main
+    from tests.test_client import FakeSession, R, page
+    opened = []
+
+    def fake_open():
+        s = FakeSession([R(page(), status_code=503), R(page() + NOT_FREE)])
+        opened.append(s)
+        return s
+    monkeypatch.setattr(main, "open_israel_session", fake_open)
+    p = paths(tmp_path, [entry(DEF, "Ladle"), entry(OTHER, "Kettle")])
+    st = run(fetch=None, notifier=FakeNotifier(), now=NOW, **p)
+    assert len(opened) == 1
+    assert st["products"][DEF]["fail_count"] == 1
+    assert st["products"][OTHER]["fail_count"] == 0

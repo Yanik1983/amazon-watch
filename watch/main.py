@@ -32,7 +32,21 @@ def _session_fetch() -> Fetch:
     watching ten products is twelve requests an hour rather than thirty.
     """
     session = open_israel_session()
-    return lambda asin: fetch_page(session, asin)
+
+    def fetch(asin: str) -> str:
+        nonlocal session
+        try:
+            return fetch_page(session, asin)
+        except FetchError as e:
+            if "captcha" not in str(e):
+                raise
+            # The handshake passed and this page was still a captcha: the
+            # verdict is on the connection, not the product. One fresh session
+            # (with its own handshake retries) before the product counts as failed.
+            log.warning("%s: captcha after a good handshake; reopening the session", asin)
+            session = open_israel_session()
+            return fetch_page(session, asin)
+    return fetch
 
 
 def _warning_due(fail_count: int) -> bool:
