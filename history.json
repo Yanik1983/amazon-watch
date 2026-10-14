@@ -82,5 +82,11 @@
     "asin": "B07SR49JCG",
     "free": true,
     "delivery_text": "FREE"
+  },
+  {
+    "at": "2026-10-14T11:51:31.025033+00:00",
+    "asin": "B07SR49JCG",
+    "free": false,
+    "delivery_text": "$6.99"
   }
 ]
