@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import html as html_mod
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 DELIVERY_PRICE_RE = re.compile(r'data-csa-c-delivery-price="([^"]*)"')
@@ -14,6 +14,21 @@ TITLE_ANCHOR = 'id="productTitle"'
 MERCHANT_ANCHOR = 'id="merchantInfo"'
 SELLER_ANCHOR = 'id="sellerProfileTriggerId"'
 ELEMENT_WINDOW = 20_000  # characters searched for an element's closing tag
+PRICE_ANCHORS = (
+    'id="corePrice_feature_div"',
+    'id="corePriceDisplay_desktop_feature_div"',
+    'id="apex_desktop"',
+)
+OFFSCREEN_RE = re.compile(r'<span class="a-offscreen">(.*?)</span>', re.S)
+LIST_PRICE_RE = re.compile(
+    r'class="[^"]*a-text-price[^"]*"[^>]*>\s*<span class="a-offscreen">(.*?)</span>', re.S
+)
+PRICE_WINDOW = 4000
+BULLETS_ANCHOR = 'id="feature-bullets"'
+BULLETS_WINDOW = 8000
+BULLET_RE = re.compile(r"<li\b[^>]*>(.*?)</li>", re.S | re.I)
+DESCRIPTION_ANCHOR = 'id="productDescription"'
+MAX_BULLETS = 12
 TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -27,6 +42,9 @@ class Product:
     free: bool
     delivery_text: str
     merchant: str
+    price: str = ""
+    list_price: str = ""
+    description: list[str] = field(default_factory=list)
 
 
 def _text(fragment: str) -> str:
@@ -68,6 +86,36 @@ def _element_text(html: str, anchor: str, tag: str) -> str:
         pos = nxt_close.end()
 
 
+def _prices(html: str) -> list[str]:
+    """Current price and, when struck through, the list price ("" when absent)."""
+    for anchor in PRICE_ANCHORS:
+        i = html.find(anchor)
+        if i < 0:
+            continue
+        block = html[i: i + PRICE_WINDOW]
+        listed = LIST_PRICE_RE.search(block)
+        list_price = _text(listed.group(1)) if listed else ""
+        for m in OFFSCREEN_RE.finditer(block):
+            value = _text(m.group(1))
+            if value and value != list_price:
+                return value, list_price
+        if listed:
+            return "", list_price
+    return "", ""
+
+
+def _description(html: str) -> list[str]:
+    """Feature bullets, or the plain product description when there are none."""
+    i = html.find(BULLETS_ANCHOR)
+    if i >= 0:
+        items = [_text(m.group(1)) for m in BULLET_RE.finditer(html[i: i + BULLETS_WINDOW])]
+        items = [t for t in items if t and "make sure this fits" not in t.lower()]
+        if items:
+            return items[:MAX_BULLETS]
+    text = _element_text(html, DESCRIPTION_ANCHOR, "div")
+    return [text] if text else []
+
+
 def parse(html: str) -> Product:
     html = COMMENT_RE.sub("", html)
     anchor = html.find(DELIVERY_BLOCK_ANCHOR)
@@ -98,4 +146,13 @@ def parse(html: str) -> Product:
         html, SELLER_ANCHOR, "a"
     )
 
-    return Product(title=title, free=free, delivery_text=delivery_text, merchant=merchant)
+    price, list_price = _prices(html)
+    return Product(
+        title=title,
+        free=free,
+        delivery_text=delivery_text,
+        merchant=merchant,
+        price=price,
+        list_price=list_price,
+        description=_description(html),
+    )

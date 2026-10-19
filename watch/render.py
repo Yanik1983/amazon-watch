@@ -43,6 +43,9 @@ h1 a { color: inherit; }
 .card .badge { font-size: 1.1rem; }
 .asin { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         font-size: .85rem; color: #666; margin: -.2rem 0 .4rem; user-select: all; }
+.price { margin: .3rem 0; font-size: 1.05rem; }
+.card details { margin: .5rem 0; }
+.card details ul { margin: .4rem 0 0; padding-left: 1.2rem; font-size: .92rem; color: #444; }
 .empty { color: #555; font-style: italic; margin: 1.5rem 0; }
 table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
 th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid #ddd; }
@@ -304,9 +307,18 @@ def _card(entry: dict, ps: dict, rows: list[dict]) -> str:
     delivery = escape(ps.get("delivery_text") or "")
     if delivery:
         out.append(f'<p class="meta">Delivery: {delivery}</p>')
+    price = escape(ps.get("price") or "")
+    if price:
+        was = escape(ps.get("list_price") or "")
+        old = f' <s class="meta">{was}</s>' if was else ""
+        out.append(f'<p class="price">Price: <b>{price}</b>{old}</p>')
     merchant = escape(ps.get("merchant") or "")
     if merchant:
         out.append(f'<p class="meta">{merchant}</p>')
+    desc = [d for d in (ps.get("description") or []) if d]
+    if desc:
+        items = "".join(f"<li>{escape(str(d))}</li>" for d in desc)
+        out.append(f"<details><summary>Description</summary><ul>{items}</ul></details>")
     out.append(f'<p class="meta">Last good reading: {_fmt(ps.get("last_success"))}</p>')
     fails = int(ps.get("fail_count") or 0)
     if fails > 0:

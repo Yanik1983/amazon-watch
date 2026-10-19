@@ -24,6 +24,9 @@ def default_entry() -> dict:
         "title": "",
         "delivery_text": "",
         "merchant": "",
+        "price": "",
+        "list_price": "",
+        "description": [],      # feature bullets, shown collapsed on the page
         "checked_at": None,     # ISO datetime (UTC) of the last successful parse
         "last_success": None,   # same, kept separate so the page can say "last good"
         "fail_count": 0,        # consecutive failed polls for this product
