@@ -334,5 +334,17 @@
     "asin": "B086VGB1LN",
     "free": true,
     "delivery_text": "FREE"
+  },
+  {
+    "at": "2026-10-20T02:39:15.874026+00:00",
+    "asin": "B07SR49JCG",
+    "free": false,
+    "delivery_text": "$6.99"
+  },
+  {
+    "at": "2026-10-20T02:39:15.874026+00:00",
+    "asin": "B086VGB1LN",
+    "free": false,
+    "delivery_text": "$6.99"
   }
 ]
