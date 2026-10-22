@@ -167,3 +167,21 @@ def test_unclosed_element_yields_empty_string_not_rest_of_page():
     p = parse(html)
     assert p.title == ""
     assert p.delivery_text == "ILS 58.91"
+
+
+def test_price_list_price_and_description():
+    html = (
+        '<div id="mir-layout-DELIVERY_BLOCK" data-csa-c-delivery-price="$6.99"></div>'
+        '<div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen">$19.99</span></span>'
+        '<span class="a-price a-text-price"><span class="a-offscreen">$24.99</span></span></div>'
+        '<div id="feature-bullets"><ul><li><span>Leak-proof &amp; sturdy</span></li>'
+        '<li><span>Holds 47oz</span></li></ul></div>'
+    )
+    p = parse(html)
+    assert (p.price, p.list_price) == ("$19.99", "$24.99")
+    assert p.description == ["Leak-proof & sturdy", "Holds 47oz"]
+
+
+def test_price_and_description_absent():
+    p = parse('<div id="mir-layout-DELIVERY_BLOCK" data-csa-c-delivery-price="FREE"></div>')
+    assert p.price == "" and p.description == []
