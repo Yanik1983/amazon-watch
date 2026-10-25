@@ -604,5 +604,11 @@
     "asin": "B07W1P15GL",
     "free": true,
     "delivery_text": "FREE"
+  },
+  {
+    "at": "2026-10-25T17:32:26.917586+00:00",
+    "asin": "B07W1P15GL",
+    "free": false,
+    "delivery_text": "$18.65"
   }
 ]
